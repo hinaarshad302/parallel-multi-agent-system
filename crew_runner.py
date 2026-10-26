@@ -96,30 +96,35 @@ def run_user_task(user_task: str) -> dict:
         async_execution=True,
     )
 
-    # Task 3: Checker
+    
+    # Task 3: Checker reviews only the actual requested deliverable.
     check_task = Task(
         description=(
-            f"Original user request:\n{user_task}\n\n"
-            "Compare the original request with the actual worker "
-            "deliverable and planner criteria in your context.\n\n"
-            "Judge only the actual deliverable. Do not confuse the "
-            "planner's notes or alternative content with the final "
-            "deliverable. Do not invent missing content or errors. "
-            "If every explicit requirement is met, mark COMPLETE. "
-            "Treat optional improvements as optional.\n\n"
-            "Return exactly this concise format:\n"
+            f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
+            "Review the worker's actual deliverable provided in your context. "
+            "The worker deliverable is the answer being evaluated. Do not "
+            "count the planner's notes, checker instructions, or other "
+            "agent outputs as part of that answer.\n\n"
+            "Evaluate only requirements explicitly stated by the user. "
+            "If the user requested exactly five bullet points, count the "
+            "bullets in the worker's deliverable itself. Do not count bullets "
+            "in other agents' outputs. Do not invent a second list, separator, "
+            "introduction, conclusion, or word limit unless it is actually "
+            "present in the worker's deliverable or explicitly required.\n\n"
+            "If all explicit requirements are satisfied, use STATUS: COMPLETE "
+            "and GAPS: None identified. Do not mark an answer incomplete "
+            "because optional improvements are possible.\n\n"
+            "Return only this format:\n"
             "STATUS: COMPLETE, PARTIAL, or NOT COMPLETE\n"
-            "FULFILLED: Requirements that are satisfied.\n"
-            "GAPS: Verified important omissions or errors, or "
-            "'None identified'.\n"
+            "FULFILLED: Briefly list requirements met.\n"
+            "GAPS: Verified unmet requirements, or 'None identified'.\n"
             "NEXT STEPS: Necessary corrections, or 'None'."
         ),
         expected_output=(
-            "A concise, evidence-based status, fulfilled requirements, "
-            "genuine gaps, and necessary next steps."
+            "A concise and accurate review of the worker's actual deliverable."
         ),
         agent=checker,
-        context=[plan_task, work_task],
+        context=[work_task],
         async_execution=False,
     )
 

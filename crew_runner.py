@@ -32,14 +32,12 @@ def run_user_task(user_task: str) -> dict:
     # Task 1: Planner
     plan_task = Task(
         description=(
-            "User task:\n"
-            f"{user_task}\n\n"
-            "Create a numbered plan, list assumptions, and define clear "
-            "criteria for completing the task."
+            f"User request:\n{user_task}\n\n"
+            "Create a concise plan, identify essential requirements, "
+            "and define measurable completion criteria. "
+            "Avoid unnecessary explanation."
         ),
-        expected_output=(
-            "A numbered plan, assumptions, and completion criteria."
-        ),
+        expected_output="A concise plan and completion criteria.",
         agent=planner,
         async_execution=True,
     )
@@ -47,52 +45,59 @@ def run_user_task(user_task: str) -> dict:
     # Task 2: Worker
     work_task = Task(
         description=(
-            "User task:\n"
-            f"{user_task}\n\n"
-            "Create the requested deliverable as completely as possible. "
-            "It may be a draft, explanation, plan, report, or code. "
-            "Do not claim to have performed external actions or used "
-            "tools that are unavailable."
+            f"User request:\n{user_task}\n\n"
+            "Produce the requested deliverable directly. "
+            "Follow the user's requested language, format, and level "
+            "of detail. Be concise unless detail is requested. "
+            "Avoid repetition, irrelevant introductions, and unnecessary "
+            "conclusions. Never claim to perform unavailable external actions."
         ),
-        expected_output=(
-            "The requested deliverable with any limitations clearly stated."
-        ),
+        expected_output="The requested deliverable.",
         agent=worker,
         async_execution=True,
     )
 
-    # Task 3: Independent quality checklist
+    # Task 3: Checker reviews the actual work
     check_task = Task(
         description=(
-            "User task:\n"
-            f"{user_task}\n\n"
-            "Create an independent quality checklist. List the requirements, "
-            "possible omissions, and evidence needed to confirm completion. "
-            "You have not seen the worker's deliverable yet, so do not claim "
-            "that you have reviewed it."
+            f"Original user request:\n{user_task}\n\n"
+            "Review the planner's criteria and the worker's actual "
+            "deliverable using the context provided.\n\n"
+            "Return a concise quality review in this format:\n"
+            "STATUS: COMPLETE, PARTIAL, or NOT COMPLETE\n"
+            "FULFILLED: Briefly list the important requirements met.\n"
+            "GAPS: List only genuine missing or incorrect requirements. "
+            "Write 'None identified' if no important gaps remain.\n"
+            "NEXT STEPS: Include only necessary actions, or 'None'.\n\n"
+            "Judge against the user's actual request. Do not treat optional "
+            "improvements as mandatory. Do not repeat the full deliverable. "
+            "Do not invent problems or claim checks you did not perform."
         ),
         expected_output=(
-            "An independent checklist and completion criteria."
+            "A concise status, fulfilled requirements, genuine gaps, "
+            "and necessary next steps."
         ),
         agent=checker,
-        async_execution=True,
+        context=[plan_task, work_task],
+        async_execution=False,
     )
 
-    # Task 4: Final review
+    # Task 4: Final answer
     final_task = Task(
         description=(
-            "Original user task:\n"
-            f"{user_task}\n\n"
-            "Review the plan, worker deliverable, and independent checklist. "
-            "Present the useful final deliverable and compare it with the "
-            "criteria. Start with one status: COMPLETE, PARTIAL, or "
-            "NOT COMPLETE. If incomplete, list missing parts and next steps. "
-            "Never invent tool execution or claim external actions happened."
+            f"Original user request:\n{user_task}\n\n"
+            "Use the plan, worker deliverable, and quality review in your "
+            "context to produce the final answer.\n\n"
+            "Return the requested deliverable itself. Preserve useful "
+            "details, correct genuine issues where possible, and follow "
+            "the requested format and language. Be concise by default "
+            "and detailed when requested.\n\n"
+            "Do not repeat the quality review, checklist, status, or next "
+            "steps as separate sections unless the user specifically asks "
+            "for them. Do not add an unnecessary introduction or conclusion. "
+            "Never invent facts, tool usage, or completed external actions."
         ),
-        expected_output=(
-            "Final deliverable, honest completion status, missing parts, "
-            "and next steps."
-        ),
+        expected_output="The polished final deliverable requested by the user.",
         agent=final_reviewer,
         context=[plan_task, work_task, check_task],
         async_execution=False,
@@ -118,14 +123,15 @@ def run_user_task(user_task: str) -> dict:
     crew.kickoff()
 
     final_output = _output(final_task)
+    review_output = _output(check_task)
 
     return {
         "final_result": final_output,
-        "review_result": final_output,
+        "review_result": review_output,
         "agent_outputs": [
             ("1. Planner Agent", _output(plan_task)),
             ("2. Worker Agent", _output(work_task)),
-            ("3. Checker Agent", _output(check_task)),
+            ("3. Checker Agent", review_output),
             ("4. Final Reviewer", final_output),
         ],
     }

@@ -31,11 +31,13 @@ st.markdown(
     """
     <style>
     /* Sidebar width: approximately 30% */
-    [data-testid="stSidebar"] {
-        width: 30vw !important;
-        min-width: 260px !important;
-        max-width: 460px !important;
-    }
+   
+[data-testid="stSidebar"] {
+    width: 22vw !important;
+    min-width: 220px !important;
+    max-width: 300px !important;
+}
+
 
     [data-testid="stSidebar"] > div:first-child {
         background: linear-gradient(180deg, #111827, #1E293B);

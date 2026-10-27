@@ -1,12 +1,13 @@
 
-import os
 import json
+import os
+
 import requests
 import streamlit as st
 
 
 def _get_secret(name: str) -> str:
-    """Read a secret from Streamlit or environment variables."""
+    """Read a secret from Streamlit Secrets or environment variables."""
     try:
         value = st.secrets.get(name, "")
     except Exception:
@@ -16,27 +17,33 @@ def _get_secret(name: str) -> str:
 
 
 def search_web(query: str) -> str:
-    """Search the web through Groq Browser Search and return evidence."""
+    """Search with Groq Browser Search and return evidence as JSON text."""
 
     api_key = _get_secret("GROQ_API_KEY")
 
     if not api_key:
-        return "SEARCH ERROR: GROQ_API_KEY is missing."
+        return json.dumps({
+            "status": "ERROR",
+            "search_response": "",
+            "executed_tools": [],
+            "error": "GROQ_API_KEY is missing.",
+        }, ensure_ascii=False, indent=2)
 
+    model = _get_secret("GROQ_MODEL") or "openai/gpt-oss-120b"
     url = "https://api.groq.com/openai/v1/chat/completions"
 
     payload = {
-        "model": _get_secret("GROQ_MODEL")
-        or "openai/gpt-oss-120b",
+        "model": model,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "Research the user's request using web search. "
-                    "Prefer official and primary sources. Return source "
-                    "titles, URLs, relevant evidence, and which claims "
-                    "the evidence supports. Never invent a source. "
-                    "Clearly label anything you could not verify."
+                    "Research the user's task using browser search. Prefer "
+                    "official and primary sources. Return source titles, URLs, "
+                    "relevant evidence, and the claims each source supports. "
+                    "Never invent sources or say you verified something unless "
+                    "the returned evidence supports that statement. Clearly "
+                    "label claims that could not be verified."
                 ),
             },
             {"role": "user", "content": query},
@@ -56,21 +63,52 @@ def search_web(query: str) -> str:
         )
 
         if not response.ok:
-            return (
-                "SEARCH ERROR: Groq returned HTTP "
-                f"{response.status_code}. Details: "
-                f"{response.text[:500]}"
-            )
+            return json.dumps({
+                "status": "ERROR",
+                "search_response": "",
+                "executed_tools": [],
+                "error": (
+                    f"Groq returned HTTP {response.status_code}: "
+                    f"{response.text[:400]}"
+                ),
+            }, ensure_ascii=False, indent=2)
 
         data = response.json()
-        message = data["choices"][0]["message"]
+        choices = data.get("choices", [])
+
+        if not choices:
+            return json.dumps({
+                "status": "ERROR",
+                "search_response": "",
+                "executed_tools": [],
+                "error": "Groq returned no choices in its response.",
+            }, ensure_ascii=False, indent=2)
+
+        message = choices[0].get("message", {})
+
+        content = message.get("content", "")
+        if not content:
+            content = "No textual search evidence was returned."
 
         result = {
-            "search_response": message.get("content", ""),
+            "status": "SUCCESS",
+            "model": model,
+            "search_response": content,
             "executed_tools": message.get("executed_tools", []),
         }
 
         return json.dumps(result, ensure_ascii=False, indent=2)
 
-    except (requests.RequestException, ValueError, KeyError, IndexError) as error:
-        return f"SEARCH ERROR: {type(error).__name__}: {error}"
+    except requests.Timeout:
+        error = "Groq Browser Search timed out."
+    except requests.RequestException as exc:
+        error = f"Network request failed: {type(exc).__name__}"
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        error = f"Unexpected Groq response: {type(exc).__name__}"
+
+    return json.dumps({
+        "status": "ERROR",
+        "search_response": "",
+        "executed_tools": [],
+        "error": error,
+    }, ensure_ascii=False, indent=2)

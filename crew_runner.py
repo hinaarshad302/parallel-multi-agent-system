@@ -1,10 +1,9 @@
 
 # crew_runner.py
-# Parallel Multi-Agent AI System
-# CrewAI + Groq + Browser Search + Streamlit
+# CrewAI + Groq Browser Search + Streamlit
 
 def _disable_cache_breakpoint():
-    """Apply a compatibility workaround for cache_breakpoint."""
+    """Compatibility workaround for supported CrewAI versions."""
 
     def _return_message_unchanged(message, *args, **kwargs):
         if isinstance(message, dict):
@@ -49,35 +48,37 @@ from agents.final_reviewer_agent import create_final_reviewer_agent
 
 
 def _output(task):
-    """Safely retrieve a task's raw output."""
+    """Return a task's output safely as text."""
     try:
-        if task.output is not None:
-            return task.output.raw or ""
+        output = task.output
+        if output is not None:
+            raw = getattr(output, "raw", None)
+            if raw:
+                return str(raw)
+            return str(output)
     except (AttributeError, TypeError):
         pass
-
     return ""
 
 
 def run_user_task(user_task: str) -> dict:
-    """Run the user's request through the four-agent workflow."""
+    """Run Planner, Worker, Checker, and Final Reviewer in order."""
 
     if not isinstance(user_task, str) or not user_task.strip():
         raise ValueError("Please enter a task before running the agents.")
 
+    user_task = user_task.strip()
     llm = get_llm()
 
-    # Step 1: Search for evidence using Groq Browser Search.
-    # Search errors are retained and disclosed to the agents.
+    # Search evidence is collected once and shared with relevant agents.
     search_results = search_web(
-        "Research the user's task using reliable web sources. "
-        "Prefer official and primary sources. Return source titles, "
-        "URLs, relevant evidence, and explain which claims the evidence "
-        "supports. Do not invent sources. Clearly label unverified claims.\n\n"
+        "Research this task using reliable web sources. Prefer official "
+        "and primary sources. Return source titles, URLs, relevant evidence, "
+        "and explain which claims each source supports. Do not invent sources. "
+        "Clearly disclose anything that could not be verified.\n\n"
         f"USER TASK:\n{user_task}"
     )
 
-    # Create the four agents.
     planner = create_planner_agent(llm)
     worker = create_worker_agent(llm)
     checker = create_checker_agent(llm)
@@ -86,151 +87,100 @@ def run_user_task(user_task: str) -> dict:
     # Task 1: Planner
     plan_task = Task(
         description=(
-            f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            "Create a concise plan before work begins. Identify the user's "
-            "requirements, requested format, language, and completion criteria. "
-            "For factual research tasks, include a step to use the supplied "
-            "web search evidence. Do not perform the worker's task."
+            f"USER REQUEST:\n{user_task}\n\n"
+            "Create a concise plan with explicit requirements, expected "
+            "format, language, and completion criteria. For research tasks, "
+            "include evidence checking. Do not produce the final deliverable."
         ),
-        expected_output=(
-            "A concise plan listing the user's requirements and "
-            "measurable completion criteria."
-        ),
+        expected_output="A concise plan and completion checklist.",
         agent=planner,
-        async_execution=True,
+        async_execution=False,
     )
 
     # Task 2: Worker
     work_task = Task(
         description=(
-            f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            f"WEB SEARCH RESULTS:\n{search_results}\n\n"
-            "Produce the requested deliverable. Follow the user's requested "
-            "language, format, scope, and level of detail.\n\n"
-            "For factual research, use the supplied web search results as "
-            "evidence. Cite relevant source titles and URLs when appropriate. "
-            "Only connect a source to a claim when the supplied evidence "
-            "supports that connection. Do not invent facts, references, "
-            "quotes, statistics, publication dates, or URLs.\n\n"
-            "If the search returned an error, no useful evidence, or "
-            "insufficient evidence for a claim, clearly mark that claim "
-            "or source as UNVERIFIED. Do not say that a source was verified "
-            "unless the available evidence supports that statement. "
-            "Do not claim to have performed external actions that did not occur."
+            f"USER REQUEST:\n{user_task}\n\n"
+            f"WEB SEARCH EVIDENCE:\n{search_results}\n\n"
+            "Create the requested deliverable. Follow the user's format, "
+            "language, and scope. Use the supplied evidence for factual "
+            "research when relevant. A source title or URL alone does not "
+            "prove a claim. Never invent citations, quotations, statistics, "
+            "URLs, or verification results. If evidence is missing or "
+            "insufficient, label the affected claim UNVERIFIED. If search "
+            "failed, disclose that limitation. Do not claim that you "
+            "performed actions that did not occur."
         ),
-        expected_output="The requested deliverable, with appropriate evidence.",
+        expected_output="The requested deliverable with honest evidence labels.",
         agent=worker,
         context=[plan_task],
-        async_execution=True,
+        async_execution=False,
     )
 
     # Task 3: Checker
     check_task = Task(
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            f"WEB SEARCH RESULTS:\n{search_results}\n\n"
-            "Review the worker's actual deliverable and the supplied search "
-            "evidence. Evaluate the deliverable, not merely its appearance.\n\n"
-
-            "A. REQUIREMENT CHECK\n"
-            "1. Identify the requirements explicitly stated by the user.\n"
-            "2. Compare the deliverable with each requirement.\n"
-            "3. Count items only when a specific number or format was requested.\n"
-            "4. Report important gaps supported by evidence.\n\n"
-
-            "B. FACTS AND CITATIONS\n"
-            "1. Identify important factual claims and citations.\n"
-            "2. Compare each relevant citation with the supplied search results.\n"
-            "3. Check whether the source title, URL, and available evidence "
-            "match the claim it is used to support.\n"
-            "4. A search result, source title, or URL alone does not prove "
-            "that every claim is correct.\n"
-            "5. Do not claim to have opened or independently verified a source "
-            "unless the supplied evidence shows that this occurred.\n"
-            "6. If evidence is missing or insufficient, label the relevant "
-            "claim or citation UNVERIFIED.\n"
-            "7. If the evidence clearly contradicts a claim, explain the "
-            "specific contradiction. Do not confuse uncertainty with an error.\n"
-            "8. Never mark all citations verified merely because citations "
-            "are present or correctly formatted.\n\n"
-
-            "C. FINAL STATUS\n"
-            "Use COMPLETE when the explicit requirements are met and no "
-            "important evidence-supported issue remains. Use PARTIAL or "
-            "NOT COMPLETE when important requirements are unmet. If source "
-            "verification is necessary but evidence is unavailable, disclose "
-            "the limitation in GAPS and do not pretend verification succeeded.\n\n"
-
-            "Return only this format:\n"
+            f"WEB SEARCH EVIDENCE:\n{search_results}\n\n"
+            "Review the actual worker deliverable available in your task "
+            "context. Compare it with the original request and the evidence.\n\n"
+            "Check these items:\n"
+            "1. Are explicit requirements and requested counts satisfied?\n"
+            "2. Are important factual claims supported by the supplied evidence?\n"
+            "3. Do cited titles and URLs match the claims they support?\n"
+            "4. Distinguish a confirmed contradiction from missing evidence.\n"
+            "5. Mark a claim UNVERIFIED when evidence is insufficient. Do not "
+            "claim to have independently opened or verified a source unless "
+            "the supplied evidence establishes that.\n"
+            "6. Do not mark claims verified just because citations are present.\n\n"
+            "Return this format only:\n"
             "STATUS: COMPLETE, PARTIAL, or NOT COMPLETE\n"
             "FULFILLED: Requirements satisfied.\n"
-            "GAPS: Important gaps, contradictions, or unverified claims.\n"
-            "NEXT STEPS: Necessary corrections or checks, or None."
+            "GAPS: Important unmet requirements, contradictions, or unverified "
+            "claims. Write None identified if there are none.\n"
+            "NEXT STEPS: Necessary corrections. Write None if no action is needed."
         ),
-        expected_output=(
-            "An evidence-based review of requirements, claims, citations, "
-            "limitations, and necessary corrections."
-        ),
+        expected_output="An evidence-based quality and completeness review.",
         agent=checker,
         context=[work_task],
         async_execution=False,
     )
 
     # Task 4: Final Reviewer
+    # IMPORTANT: Do not interpolate task outputs here. This description is
+    # created before kickoff; prior outputs are supplied through context.
     final_task = Task(
-       
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            f"WEB SEARCH RESULTS:\n{search_results}\n\n"
-            "WORKER DELIVERABLE:\n"
-            f"{_output(work_task)}\n\n"
-            "CHECKER REVIEW:\n"
-            f"{_output(check_task)}\n\n"
-
-            "Prepare the final answer according to the original user request.\n\n"
-
-            "MANDATORY EVIDENCE RULES:\n"
-            "1. Read the checker review carefully before preparing the answer.\n"
-            "2. If the checker reports PARTIAL or NOT COMPLETE, do not silently "
-            "ignore that finding.\n"
-            "3. Correct an issue only when the supplied evidence supports the "
-            "correction.\n"
-            "4. Do not claim a citation or factual statement is verified merely "
-            "because a title, reference, or URL is present.\n"
-            "5. If the available search evidence does not establish that a "
-            "source supports its claim, label that citation UNVERIFIED or "
-            "revise/remove the unsupported claim.\n"
-            "6. If a source clearly contradicts a claim, correct the claim "
-            "when the evidence allows it. Otherwise disclose the uncertainty.\n"
-            "7. Never invent sources, URLs, quotations, or verification results.\n"
-            "8. Follow the user's requested format and language. Return the "
-            "deliverable itself, not an internal review report.\n"
+            f"WEB SEARCH EVIDENCE:\n{search_results}\n\n"
+            "Prepare the final deliverable requested by the user, using the "
+            "actual Planner, Worker, and Checker outputs supplied in your "
+            "task context.\n\n"
+            "MANDATORY RULES:\n"
+            "1. Read the Checker's STATUS, GAPS, and NEXT STEPS.\n"
+            "2. Do not repeat the worker's answer unchanged if the Checker "
+            "identifies an important issue.\n"
+            "3. Correct a claim only when the supplied evidence supports "
+            "the correction. Otherwise disclose uncertainty.\n"
+            "4. Label unsupported or insufficiently evidenced factual claims "
+            "UNVERIFIED, or remove them if they are not needed.\n"
+            "5. Do not describe a source as verified merely because a URL or "
+            "title exists. Never invent sources or verification results.\n"
+            "6. Respect the user's requested language, format, and scope.\n"
+            "7. Return the deliverable itself, not an internal review report.\n"
         ),
-
         expected_output=(
-            "The polished deliverable requested by the user, with honest "
-            "citation and evidence limitations."
+            "The requested final deliverable, with checker issues addressed "
+            "and evidence limitations clearly disclosed."
         ),
         agent=final_reviewer,
         context=[plan_task, work_task, check_task],
         async_execution=False,
     )
 
-    # Existing sequential orchestration is retained.
-    # Note: this is not true parallel execution.
     crew = Crew(
-        agents=[
-            planner,
-            worker,
-            checker,
-            final_reviewer,
-        ],
-        tasks=[
-            plan_task,
-            work_task,
-            check_task,
-            final_task,
-        ],
+        agents=[planner, worker, checker, final_reviewer],
+        tasks=[plan_task, work_task, check_task, final_task],
         process=Process.sequential,
         verbose=False,
     )
@@ -240,19 +190,22 @@ def run_user_task(user_task: str) -> dict:
     final_output = _output(final_task)
     review_output = _output(check_task)
 
+    agent_outputs = [
+        ("1. Planner Agent", _output(plan_task)),
+        ("2. Worker Agent", _output(work_task)),
+        ("3. Checker Agent", review_output),
+        ("4. Final Reviewer", final_output),
+    ]
+
     if not final_output.strip():
         raise RuntimeError(
-            "The workflow finished without producing a final answer. "
-            "Please try again."
+            "The workflow finished without a final answer. "
+            "Check the Streamlit Cloud logs for technical details."
         )
 
     return {
         "final_result": final_output,
         "review_result": review_output,
-        "agent_outputs": [
-            ("1. Planner Agent", _output(plan_task)),
-            ("2. Worker Agent", _output(work_task)),
-            ("3. Checker Agent", review_output),
-            ("4. Final Reviewer", final_output),
-        ],
+        "search_results": search_results,
+        "agent_outputs": agent_outputs,
     }

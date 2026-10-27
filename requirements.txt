@@ -3,3 +3,4 @@ streamlit
 crewai[litellm]
 requests
 supabase
+websockets==13.1

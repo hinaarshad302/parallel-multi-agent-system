@@ -1,518 +1,654 @@
 
-import streamlit as st
-from datetime import datetime
-from crew_runner import run_user_task
+"""
+Parallel Multi-Agent AI System
+Security-first Streamlit application.
 
-# ==================== PAGE CONFIG ====================
+Important:
+- This is a hardened application baseline, NOT a security audit.
+- Payments are not activated by this file.
+- Configure Supabase Auth, RLS, database policies, secrets and
+  server-side payment verification before production billing.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+import streamlit as st
+from supabase import create_client, Client
+
+from crew_runner import run_task
+
+
+# ---------------------------------------------------------
+# 1. APPLICATION CONFIGURATION
+# ---------------------------------------------------------
+
 st.set_page_config(
-    page_title="Multi-Agent AI Workspace",
+    page_title="Parallel Multi-Agent AI System",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ==================== SESSION STATE ====================
-if "navigation" not in st.session_state:
-    st.session_state["navigation"] = "Dashboard"
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("parallel_agents")
 
-if "task_history" not in st.session_state:
-    st.session_state["task_history"] = []
-
-if "last_result" not in st.session_state:
-    st.session_state["last_result"] = None
+MAX_TASK_LENGTH = 5000
+FREE_DAILY_LIMIT = 5
+TASKS_TABLE = "task_history"
+SUBSCRIPTIONS_TABLE = "subscriptions"
 
 
-def navigate_to(page):
-    st.session_state["navigation"] = page
+# ---------------------------------------------------------
+# 2. SAFE CONFIGURATION ACCESS
+# ---------------------------------------------------------
+
+def get_setting(name: str, default: str = "") -> str:
+    """Read configuration from Streamlit secrets or environment."""
+    try:
+        value = st.secrets.get(name, None)
+        if value is not None:
+            return str(value).strip()
+    except Exception:
+        pass
+
+    return os.environ.get(name, default).strip()
 
 
-# ==================== PROFESSIONAL DESIGN ====================
-st.markdown(
+def get_supabase_config() -> tuple[str, str]:
+    url = get_setting("SUPABASE_URL")
+    key = get_setting("SUPABASE_ANON_KEY")
+
+    if not url or not key:
+        raise RuntimeError("Supabase configuration is missing.")
+
+    if not url.startswith("https://"):
+        raise RuntimeError("Invalid Supabase URL configuration.")
+
+    return url, key
+
+
+def get_supabase_client() -> Client:
     """
-    <style>
-    /* Sidebar width: approximately 30% */
-   
-[data-testid="stSidebar"] {
-    width: 22vw !important;
-    min-width: 220px !important;
-    max-width: 300px !important;
+    Create a session-scoped client.
+    Do not cache a mutable authenticated client across users.
+    """
+    url, key = get_supabase_config()
+    client = create_client(url, key)
+
+    access_token = st.session_state.get("access_token")
+    if access_token:
+        client.postgrest.auth(access_token)
+
+    return client
+
+
+# ---------------------------------------------------------
+# 3. SESSION STATE
+# ---------------------------------------------------------
+
+DEFAULTS = {
+    "authenticated": False,
+    "access_token": None,
+    "refresh_token": None,
+    "user_id": None,
+    "user_email": None,
+    "page": "Dashboard",
 }
 
-
-    [data-testid="stSidebar"] > div:first-child {
-        background: linear-gradient(180deg, #111827, #1E293B);
-        border-right: 1px solid #334155;
-    }
-
-    [data-testid="stSidebar"] * {
-        color: #F8FAFC;
-    }
-
-    .stApp {
-        background-color: #F6F8FC;
-    }
-
-    [data-testid="stMainBlockContainer"] {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-    }
-
-    .hero {
-        background: linear-gradient(125deg, #172554, #4338CA);
-        padding: 30px;
-        border-radius: 18px;
-        color: white;
-        margin-bottom: 24px;
-    }
-
-    .hero h1, .hero p {
-        color: white !important;
-    }
-
-    .metric-card {
-        background: white;
-        padding: 20px;
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        min-height: 115px;
-    }
-
-    .metric-label {
-        color: #64748B;
-        font-size: 14px;
-    }
-
-    .metric-value {
-        color: #172554;
-        font-size: 28px;
-        font-weight: 700;
-        margin-top: 8px;
-    }
-
-    .agent-card {
-        background: white;
-        padding: 18px;
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        margin-bottom: 12px;
-    }
-
-    div.stButton > button {
-        border-radius: 9px;
-        min-height: 42px;
-    }
-
-    div.stButton > button[kind="primary"] {
-        font-weight: 600;
-    }
-
-    @media (max-width: 768px) {
-        [data-testid="stSidebar"] {
-            width: 80vw !important;
-            min-width: 0 !important;
-            max-width: 80vw !important;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+for key, value in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
-# ==================== SIDEBAR ====================
-with st.sidebar:
-    st.markdown("# 🤖 Multi-Agent")
-    st.caption("AI WORKSPACE")
-    st.divider()
+def clear_session() -> None:
+    """Clear locally stored authentication state."""
+    for key, value in DEFAULTS.items():
+        st.session_state[key] = value
 
-    st.radio(
-        "NAVIGATION",
-        [
-            "Dashboard",
-            "New Task",
-            "Agent Workflow",
-            "Task History",
-            "Settings",
-        ],
-        key="navigation",
+
+def validate_email(email: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+",
+            email,
+        )
     )
 
-    st.divider()
-    st.markdown("### 🧠 YOUR AI TEAM")
 
-    st.markdown("🗺️ **Planner Agent**")
-    st.caption("Plans task steps")
+def get_authenticated_user() -> dict[str, Any] | None:
+    """
+    Verify the access token with Supabase Auth.
+    Do not trust only a session_state user ID.
+    """
+    token = st.session_state.get("access_token")
+    if not token:
+        return None
 
-    st.markdown("⚙️ **Worker Agent**")
-    st.caption("Creates the requested output")
+    try:
+        client = get_supabase_client()
+        response = client.auth.get_user(token)
+        user = getattr(response, "user", None)
 
-    st.markdown("🔍 **Checker Agent**")
-    st.caption("Checks completeness")
+        if not user or not getattr(user, "id", None):
+            clear_session()
+            return None
 
-    st.markdown("📝 **Final Reviewer**")
-    st.caption("Combines the results")
+        # Always use the ID returned by verified Auth.
+        st.session_state.user_id = str(user.id)
+        st.session_state.user_email = getattr(user, "email", None)
 
-    st.divider()
-    st.caption("Powered by Groq + CrewAI")
-    st.caption("Text-based AI task system")
+        return {
+            "id": str(user.id),
+            "email": getattr(user, "email", "") or "",
+        }
+
+    except Exception:
+        logger.warning("Authentication verification failed.")
+        clear_session()
+        return None
 
 
-# ==================== DASHBOARD ====================
-page = st.session_state["navigation"]
-history = st.session_state["task_history"]
+# ---------------------------------------------------------
+# 4. LOGIN AND SIGNUP
+# ---------------------------------------------------------
 
-if page == "Dashboard":
+def save_auth_session(response: Any) -> bool:
+    session = getattr(response, "session", None)
+    user = getattr(response, "user", None)
 
+    if not session or not user:
+        return False
+
+    access_token = getattr(session, "access_token", None)
+    refresh_token = getattr(session, "refresh_token", None)
+
+    if not access_token or not refresh_token:
+        return False
+
+    st.session_state.authenticated = True
+    st.session_state.access_token = access_token
+    st.session_state.refresh_token = refresh_token
+    st.session_state.user_id = str(user.id)
+    st.session_state.user_email = getattr(user, "email", "") or ""
+
+    return True
+
+
+def render_authentication() -> None:
+    st.title("🤖 Parallel Multi-Agent AI System")
+    st.write("Apne account mein login karein ya naya account banayein.")
+
+    login_tab, signup_tab, reset_tab = st.tabs(
+        ["Login", "Create Account", "Forgot Password"]
+    )
+
+    with login_tab:
+        with st.form("login_form"):
+            email = st.text_input("Email", max_chars=254).strip().lower()
+            password = st.text_input(
+                "Password", type="password", max_chars=256
+            )
+            submitted = st.form_submit_button(
+                "Login", type="primary", use_container_width=True
+            )
+
+        if submitted:
+            if not validate_email(email) or not password:
+                st.error("Valid email aur password enter karein.")
+            else:
+                try:
+                    client = get_supabase_client()
+                    response = client.auth.sign_in_with_password(
+                        {"email": email, "password": password}
+                    )
+
+                    if save_auth_session(response):
+                        st.success("Login successful.")
+                        st.rerun()
+                    else:
+                        st.error(
+                            "Login complete nahi hua. Email verification "
+                            "ya account status check karein."
+                        )
+
+                except Exception:
+                    logger.warning("Login attempt failed.")
+                    st.error(
+                        "Login nahi ho saka. Email/password check karein "
+                        "ya kuch dair baad dobara try karein."
+                    )
+
+    with signup_tab:
+        with st.form("signup_form"):
+            new_email = st.text_input(
+                "Email address", max_chars=254
+            ).strip().lower()
+            new_password = st.text_input(
+                "Password (minimum 12 characters)",
+                type="password",
+                max_chars=256,
+            )
+            confirm_password = st.text_input(
+                "Confirm password", type="password", max_chars=256
+            )
+
+            accepted = st.checkbox(
+                "I agree to the website Terms and Privacy Policy."
+            )
+
+            signup = st.form_submit_button(
+                "Create Account", use_container_width=True
+            )
+
+        if signup:
+            if not validate_email(new_email):
+                st.error("Valid email address enter karein.")
+            elif len(new_password) < 12:
+                st.error("Password kam az kam 12 characters ka rakhein.")
+            elif new_password != confirm_password:
+                st.error("Dono passwords match nahi karte.")
+            elif not accepted:
+                st.error("Terms aur Privacy Policy accept karein.")
+            else:
+                try:
+                    client = get_supabase_client()
+                    response = client.auth.sign_up(
+                        {
+                            "email": new_email,
+                            "password": new_password,
+                        }
+                    )
+
+                    if save_auth_session(response):
+                        st.success("Account create ho gaya.")
+                        st.rerun()
+                    else:
+                        st.success(
+                            "Signup request submit ho gayi. Apni email "
+                            "check karein aur verification complete karein."
+                        )
+
+                except Exception:
+                    logger.warning("Signup request failed.")
+                    st.error(
+                        "Account create nahi ho saka. Dobara try karein."
+                    )
+
+    with reset_tab:
+        with st.form("reset_form"):
+            reset_email = st.text_input(
+                "Account email", max_chars=254
+            ).strip().lower()
+            reset_submit = st.form_submit_button("Send Reset Email")
+
+        if reset_submit:
+            if not validate_email(reset_email):
+                st.error("Valid email address enter karein.")
+            else:
+                try:
+                    client = get_supabase_client()
+                    client.auth.reset_password_email(reset_email)
+                    st.success(
+                        "Agar account maujood hai, password reset email "
+                        "bhej di jayegi. Inbox aur spam folder check karein."
+                    )
+                except Exception:
+                    logger.warning("Password reset request failed.")
+                    st.info(
+                        "Request process nahi ho saki. Kuch dair baad "
+                        "dobara try karein."
+                    )
+
+
+# ---------------------------------------------------------
+# 5. SUBSCRIPTION STATUS
+# ---------------------------------------------------------
+
+def get_subscription_status(user_id: str) -> dict[str, Any]:
+    """
+    Read subscription status from the database.
+    Never accept a plan or paid status from a browser form.
+    The database must have RLS policies restricting rows by auth.uid().
+    """
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table(SUBSCRIPTIONS_TABLE)
+            .select("plan,status,expires_at")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+
+        rows = response.data or []
+        if not rows:
+            return {"plan": "free", "status": "free", "expires_at": None}
+
+        record = rows[0]
+        status = str(record.get("status", "")).lower()
+        expires_at = record.get("expires_at")
+
+        active = status == "active"
+
+        if expires_at:
+            try:
+                expiry = datetime.fromisoformat(
+                    expires_at.replace("Z", "+00:00")
+                )
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry <= datetime.now(timezone.utc):
+                    active = False
+            except (ValueError, TypeError):
+                active = False
+
+        if not active:
+            return {"plan": "free", "status": "inactive", "expires_at": None}
+
+        return {
+            "plan": str(record.get("plan", "free")),
+            "status": "active",
+            "expires_at": expires_at,
+        }
+
+    except Exception:
+        # Fail closed: do not grant paid features when DB checks fail.
+        logger.error("Subscription status lookup failed.")
+        return {"plan": "free", "status": "unknown", "expires_at": None}
+
+
+# ---------------------------------------------------------
+# 6. TASK QUOTA AND HISTORY
+# ---------------------------------------------------------
+
+def get_today_task_count(user_id: str) -> int:
+    """Count today's task records using the authenticated database role."""
+    try:
+        client = get_supabase_client()
+        start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+
+        response = (
+            client.table(TASKS_TABLE)
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .gte("created_at", start)
+            .execute()
+        )
+
+        return int(response.count or 0)
+
+    except Exception:
+        logger.error("Task quota lookup failed.")
+        raise RuntimeError("Task limit verify nahi ho saka.")
+
+
+def save_task_history(
+    user_id: str,
+    task_text: str,
+    result_text: str,
+) -> None:
+    """Save task history only for the verified user."""
+    client = get_supabase_client()
+    client.table(TASKS_TABLE).insert(
+        {
+            "user_id": user_id,
+            "task": task_text,
+            "result": result_text,
+        }
+    ).execute()
+
+
+def render_history(user_id: str) -> None:
+    st.subheader("Task History")
+
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table(TASKS_TABLE)
+            .select("task,result,created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+
+        rows = response.data or []
+        if not rows:
+            st.info("Abhi koi task history nahi hai.")
+            return
+
+        for index, item in enumerate(rows, start=1):
+            label = str(item.get("task", "Task"))[:100]
+            with st.expander(f"{index}. {label}"):
+                st.caption(str(item.get("created_at", "")))
+                st.write(item.get("result", ""))
+
+    except Exception:
+        logger.error("Task history retrieval failed.")
+        st.error("History load nahi ho saki. Database policies check karein.")
+
+
+# ---------------------------------------------------------
+# 7. MAIN APPLICATION
+# ---------------------------------------------------------
+
+def render_app(user: dict[str, Any]) -> None:
+    user_id = user["id"]
+    email = user["email"]
+
+    with st.sidebar:
+        st.title("🤖 Multi-Agent AI")
+        st.caption(f"Logged in: {email}")
+
+        selected_page = st.radio(
+            "Menu",
+            ["Dashboard", "Task History", "Subscription", "Security"],
+        )
+        st.session_state.page = selected_page
+
+        if st.button("Logout", use_container_width=True):
+            try:
+                get_supabase_client().auth.sign_out()
+            except Exception:
+                logger.warning("Remote logout request failed.")
+            finally:
+                clear_session()
+                st.rerun()
+
+    if selected_page == "Dashboard":
+        st.title("Parallel Multi-Agent AI System")
+        st.write(
+            "Apna task likhein. System aapke configured CrewAI agents "
+            "ke zariye result generate karega."
+        )
+
+        subscription = get_subscription_status(user_id)
+        paid_active = subscription["status"] == "active"
+
+        try:
+            used_today = get_today_task_count(user_id)
+        except Exception:
+            st.error(
+                "Task limit verify nahi ho saki. Security ke liye task "
+                "run nahi kiya gaya."
+            )
+            return
+
+        if paid_active:
+            st.info(
+                f"Plan: {subscription['plan']} — active. "
+                "Paid plan ki limit server-side enforce honi chahiye."
+            )
+        else:
+            st.info(
+                f"Free plan: {used_today}/{FREE_DAILY_LIMIT} tasks aaj."
+            )
+
+        task_text = st.text_area(
+            "Apna task likhein",
+            max_chars=MAX_TASK_LENGTH,
+            height=160,
+            placeholder="Misal: AI ke faide aur nuqsanat explain karein...",
+        )
+
+        run_clicked = st.button(
+            "Run AI Agents",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if run_clicked:
+            clean_task = task_text.strip()
+
+            if not clean_task:
+                st.warning("Pehle task likhein.")
+                return
+
+            if len(clean_task) > MAX_TASK_LENGTH:
+                st.error("Task bohat lamba hai.")
+                return
+
+            if not paid_active and used_today >= FREE_DAILY_LIMIT:
+                st.warning(
+                    "Aapki free daily limit complete ho gayi. "
+                    "Subscription page par plan details dekhein."
+                )
+                return
+
+            # This UI-level count is not a robust concurrency-safe quota.
+            # Enforce real quotas atomically in a trusted server/database
+            # function before enabling public production access.
+            with st.spinner("AI agents kaam kar rahe hain..."):
+                try:
+                    result = run_task(clean_task)
+
+                    if isinstance(result, dict):
+                        output = result.get("final_result")
+                        if output is None:
+                            output = result
+                    else:
+                        output = result
+
+                    result_text = str(output)
+
+                    save_task_history(user_id, clean_task, result_text)
+
+                    st.subheader("AI Result")
+                    st.markdown(result_text)
+
+                    if isinstance(result, dict):
+                        with st.expander("Agent outputs"):
+                            st.json(
+                                {
+                                    key: value
+                                    for key, value in result.items()
+                                    if key in {
+                                        "review_result",
+                                        "agent_outputs",
+                                        "search_results",
+                                    }
+                                }
+                            )
+
+                except Exception:
+                    # Avoid rendering stack traces or secrets to users.
+                    logger.exception("AI task execution failed.")
+                    st.error(
+                        "Task complete nahi ho saka. API configuration "
+                        "aur server logs administrator check kare."
+                    )
+
+    elif selected_page == "Task History":
+        render_history(user_id)
+
+    elif selected_page == "Subscription":
+        st.title("Subscription Plans")
+        subscription = get_subscription_status(user_id)
+
+        st.write(f"Current plan: **{subscription['plan']}**")
+        st.write(f"Status: **{subscription['status']}**")
+
+        st.markdown(
+            """
+            ### Payment safety
+
+            - JazzCash/Easypaisa payment abhi is page se process nahi hoti.
+            - Payment screenshot ya user-entered transaction ID se plan
+              activate nahi hona chahiye.
+            - Subscription sirf verified server-side payment callback
+              aur database transaction ke baad activate honi chahiye.
+            """
+        )
+
+        st.warning(
+            "Paid subscription activation disabled hai jab tak verified "
+            "payment backend configure na ho."
+        )
+
+    elif selected_page == "Security":
+        st.title("Account Security")
+
+        st.markdown(
+            """
+            - Apna password kisi ke saath share na karein.
+            - API keys ko GitHub code mein na likhein.
+            - Supabase par email verification enable rakhein.
+            - Strong password aur available MFA options use karein.
+            - Suspicious activity par logout karein aur password reset karein.
+            """
+        )
+
+        st.caption(
+            "Account deletion, session revocation, MFA enforcement aur "
+            "security audit logs ke liye dedicated backend configuration "
+            "aur testing abhi zaroori hai."
+        )
+
+
+# ---------------------------------------------------------
+# 8. ENTRY POINT
+# ---------------------------------------------------------
+
+def main() -> None:
     st.markdown(
         """
-        <div class="hero">
-            <h1>AI Multi-Agent Workspace</h1>
-            <p>
-                Manage tasks, coordinate your AI agents,
-                and review results in one workspace.
-            </p>
-        </div>
+        <style>
+        .block-container {
+            padding-top: 1.8rem;
+            max-width: 1200px;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.subheader("📊 Dashboard Overview")
-
-    total_tasks = len(history)
-    completed_tasks = sum(
-        1 for item in history if item.get("status") == "Completed"
-    )
-    failed_tasks = sum(
-        1 for item in history if item.get("status") == "Failed"
-    )
-
-    active_agents = 0
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    metrics = [
-        (c1, "Total Tasks", total_tasks),
-        (c2, "Completed", completed_tasks),
-        (c3, "Failed", failed_tasks),
-        (c4, "Active Agents", active_agents),
-    ]
-
-    for column, label, value in metrics:
-        with column:
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                    <div class="metric-label">{label}</div>
-                    <div class="metric-value">{value}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    st.write("")
-    st.subheader("🚀 Quick Actions")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown(
-            """
-            <div class="agent-card">
-                <h3>✨ Create a New Task</h3>
-                <p>Give your AI team a task to complete.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.button(
-            "Create Task →",
-            key="dashboard_new_task",
-            type="primary",
-            use_container_width=True,
-            on_click=navigate_to,
-            args=("New Task",),
-        )
-
-    with col2:
-        st.markdown(
-            """
-            <div class="agent-card">
-                <h3>🧩 Explore Agent Workflow</h3>
-                <p>Learn how the four agents work together.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.button(
-            "View Workflow →",
-            key="dashboard_workflow",
-            use_container_width=True,
-            on_click=navigate_to,
-            args=("Agent Workflow",),
-        )
-
-    st.caption(
-        "Dashboard counts represent tasks recorded in this session. "
-        "Persistent history will require database or file storage."
-    )
-
-
-# ==================== NEW TASK ====================
-elif page == "New Task":
-
-    st.title("🚀 Create a New Task")
-    st.write(
-        "Apna task detail mein likhein. AI agents aapke task par kaam karenge."
-    )
-
-    task = st.text_area(
-        "What would you like your AI team to do?",
-        placeholder=(
-            "Example: Create a beginner-friendly 4-week Python "
-            "learning roadmap with weekly goals and practice tasks."
-        ),
-        height=180,
-        key="user_task",
-    )
-
-    st.caption(
-        "Tip: Task mein apna goal aur required output clearly likhein."
-    )
-
-    if st.button(
-        "🚀 Run AI Agents",
-        type="primary",
-        use_container_width=True,
-    ):
-        if not task.strip():
-            st.error("Pehle apna task likhein.")
-
-        elif len(task.strip()) < 8:
-            st.error("Please task thora detail mein likhein.")
-
-        else:
-            started_at = datetime.now()
-
-            try:
-                with st.spinner(
-                    "AI agents kaam kar rahe hain. Please wait..."
-                ):
-                    result = run_user_task(task.strip())
-
-                if not isinstance(result, dict):
-                    raise ValueError(
-                        "Backend se expected result format nahi mila."
-                    )
-
-                final_result = result.get("final_result") or ""
-                review_result = result.get("review_result") or ""
-                agent_outputs = result.get("agent_outputs") or []
-
-                task_record = {
-                    "task": task.strip(),
-                    "status": "Completed",
-                    "time": started_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    "final_result": final_result,
-                    "review_result": review_result,
-                    "agent_outputs": agent_outputs,
-                }
-
-                st.session_state["last_result"] = task_record
-                st.session_state["task_history"].insert(0, task_record)
-
-                st.success("Workflow run complete!")
-
-            except Exception as exc:
-                task_record = {
-                    "task": task.strip(),
-                    "status": "Failed",
-                    "time": started_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    "final_result": "",
-                    "review_result": "",
-                    "agent_outputs": [],
-                }
-
-                st.session_state["task_history"].insert(0, task_record)
-
-                st.error("Task run nahi ho saka.")
-                st.caption(
-                    "Groq API key, model access, API limits aur "
-                    "Streamlit Cloud logs check karein."
-                )
-
-                with st.expander("Technical error details"):
-                    st.code(str(exc))
-
-    # Display the most recent successful result
-    last_result = st.session_state.get("last_result")
-
-    if last_result:
-        st.divider()
-        st.subheader("📄 Task Results")
-
-        tab1, tab2, tab3 = st.tabs(
-            ["Final Answer", "Quality Review", "Agent Outputs"]
-        )
-
-        with tab1:
-            st.markdown(
-                last_result.get("final_result")
-                or "Final reviewer ne output return nahi kiya."
-            )
-
-            if last_result.get("final_result"):
-                st.download_button(
-                    "⬇️ Download Final Answer",
-                    data=last_result["final_result"],
-                    file_name="final_result.md",
-                    mime="text/markdown",
-                    use_container_width=True,
-                )
-
-        with tab2:
-            st.markdown(
-                last_result.get("review_result")
-                or "Review output available nahi."
-            )
-
-        with tab3:
-            outputs = last_result.get("agent_outputs", [])
-
-            if outputs:
-                for title, output in outputs:
-                    with st.expander(str(title)):
-                        st.markdown(
-                            output or "Agent ne output return nahi kiya."
-                        )
-            else:
-                st.info("Individual agent outputs available nahi hain.")
-
-
-# ==================== AGENT WORKFLOW ====================
-elif page == "Agent Workflow":
-
-    st.title("🧩 Agent Workflow")
-    st.write("Har agent ka apna specific role hai.")
-
-    agents = [
-        (
-            "1. 🗺️ Planner Agent",
-            "User ke task ko chhote steps aur checklist mein divide karta hai.",
-        ),
-        (
-            "2. ⚙️ Worker Agent",
-            "User ki requirements ke mutabiq requested output banata hai.",
-        ),
-        (
-            "3. 🔍 Checker Agent",
-            "Task ki requirements aur completeness check karne ke liye report banata hai.",
-        ),
-        (
-            "4. 📝 Final Reviewer",
-            "Available outputs ko combine karke final result aur gaps report karta hai.",
-        ),
-    ]
-
-    for title, description in agents:
-        st.markdown(
-            f"""
-            <div class="agent-card">
-                <h3>{title}</h3>
-                <p>{description}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.info(
-        "Parallel execution ka actual implementation crew_runner.py "
-        "aur agent files par depend karta hai. Is page par abhi "
-        "live agent status ya real-time progress track nahi hoti."
-    )
-
-
-# ==================== TASK HISTORY ====================
-elif page == "Task History":
-
-    st.title("🕘 Task History")
-    st.write("Is session mein run kiye gaye tasks.")
-
-    if not history:
-        st.info("Abhi koi task history available nahi hai.")
-
-    else:
-        st.caption(f"Recorded tasks: {len(history)}")
-
-        if st.button("🗑️ Clear Session History"):
-            st.session_state["task_history"] = []
-            st.session_state["last_result"] = None
-            st.rerun()
-
-        for index, item in enumerate(history):
-            status = item.get("status", "Unknown")
-
-            with st.expander(
-                f"{status} · {item.get('time', 'Unknown time')} · "
-                f"{item.get('task', 'Untitled task')[:65]}"
-            ):
-                st.write("**Task:**", item.get("task", ""))
-                st.write("**Status:**", status)
-
-                if item.get("final_result"):
-                    st.markdown("### Final Result")
-                    st.markdown(item["final_result"])
-
-                    st.download_button(
-                        "Download this result",
-                        data=item["final_result"],
-                        file_name=f"task_result_{index + 1}.md",
-                        mime="text/markdown",
-                        key=f"history_download_{index}",
-                    )
-
-    st.caption(
-        "Note: Yeh history filhal current Streamlit session tak limited hai. "
-        "Permanent history ke liye database ya persistent storage chahiye."
-    )
-
-
-# ==================== SETTINGS ====================
-elif page == "Settings":
-
-    st.title("⚙️ Settings")
-
-    st.subheader("🔌 Groq API Connection")
-
     try:
-        api_key_configured = bool(st.secrets.get("GROQ_API_KEY", ""))
+        get_supabase_config()
     except Exception:
-        api_key_configured = False
-
-    if api_key_configured:
-        st.success("Groq API key configured hai.")
-    else:
-        st.warning(
-            "GROQ_API_KEY nahi mili. Streamlit Cloud Secrets check karein."
+        st.error(
+            "Supabase setup missing hai. Streamlit Secrets mein "
+            "SUPABASE_URL aur SUPABASE_ANON_KEY configure karein."
         )
+        st.stop()
 
-    st.write("**Model configuration**")
-    st.code('GROQ_MODEL = "openai/gpt-oss-120b"', language="toml")
+    user = get_authenticated_user()
 
-    st.caption(
-        "Yeh displayed model naam example configuration hai. "
-        "Actual model crew_runner.py ya llm_config.py se bhi set ho sakta hai."
-    )
+    if not user:
+        render_authentication()
+        return
 
-    st.divider()
+    render_app(user)
 
-    st.subheader("ℹ️ System Limitations")
 
-    st.markdown(
-        """
-        - Task history abhi permanent database mein save nahi hoti.
-        - Live progress aur token usage tracking abhi implement nahi hain.
-        - Failed agent ko alag se retry karne ka feature abhi implement nahi hai.
-        - Website operation, email sending aur live research ke liye
-          additional tools aur permissions chahiye.
-        """
-    )
+if __name__ == "__main__":
+    main()

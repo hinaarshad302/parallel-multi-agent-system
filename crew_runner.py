@@ -178,21 +178,35 @@ def run_user_task(user_task: str) -> dict:
 
     # Task 4: Final Reviewer
     final_task = Task(
+       
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
             f"WEB SEARCH RESULTS:\n{search_results}\n\n"
-            "Use the worker's deliverable, planner criteria, and checker's "
-            "review to prepare the final answer. Return the requested "
-            "deliverable itself, not an internal review report.\n\n"
-            "Correct genuine issues where possible. Do not invent references "
-            "or claim that sources are verified without supporting evidence. "
-            "If an important factual claim cannot be supported by the supplied "
-            "evidence, qualify it or label it UNVERIFIED. Do not blindly accept "
-            "an incorrect checker verdict.\n\n"
-            "Follow the user's requested language, format, and level of detail. "
-            "Do not add a quality-review section unless requested. "
-            "Never claim to have performed unavailable external actions."
+            "WORKER DELIVERABLE:\n"
+            f"{_output(work_task)}\n\n"
+            "CHECKER REVIEW:\n"
+            f"{_output(check_task)}\n\n"
+
+            "Prepare the final answer according to the original user request.\n\n"
+
+            "MANDATORY EVIDENCE RULES:\n"
+            "1. Read the checker review carefully before preparing the answer.\n"
+            "2. If the checker reports PARTIAL or NOT COMPLETE, do not silently "
+            "ignore that finding.\n"
+            "3. Correct an issue only when the supplied evidence supports the "
+            "correction.\n"
+            "4. Do not claim a citation or factual statement is verified merely "
+            "because a title, reference, or URL is present.\n"
+            "5. If the available search evidence does not establish that a "
+            "source supports its claim, label that citation UNVERIFIED or "
+            "revise/remove the unsupported claim.\n"
+            "6. If a source clearly contradicts a claim, correct the claim "
+            "when the evidence allows it. Otherwise disclose the uncertainty.\n"
+            "7. Never invent sources, URLs, quotations, or verification results.\n"
+            "8. Follow the user's requested format and language. Return the "
+            "deliverable itself, not an internal review report.\n"
         ),
+
         expected_output=(
             "The polished deliverable requested by the user, with honest "
             "citation and evidence limitations."

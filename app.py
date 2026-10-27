@@ -1,8 +1,6 @@
 """
 Parallel Multi-Agent AI System
-Professional Streamlit application.
-Authentication: Supabase
-AI execution: CrewAI + Groq
+Streamlit + Supabase + CrewAI + Groq
 """
 
 from __future__ import annotations
@@ -38,9 +36,14 @@ FREE_DAILY_LIMIT = 5
 TASKS_TABLE = "task_history"
 SUBSCRIPTIONS_TABLE = "subscriptions"
 
+# Your deployed Streamlit app URL
+APP_URL = (
+    "https://parallel-multi-agent-system-kijnmteevpxi38tvdrrafi.streamlit.app/"
+)
+
 
 # =========================================================
-# 2. PROFESSIONAL UI DESIGN
+# 2. LIGHT, PROFESSIONAL DESIGN
 # =========================================================
 
 st.markdown(
@@ -51,163 +54,198 @@ st.markdown(
     );
 
     :root {
-        --bg: #0b1020;
-        --panel: #121a2d;
-        --border: rgba(148, 163, 184, .18);
-        --text: #edf2ff;
-        --muted: #9aa8c2;
-        --purple: #8b5cf6;
-        --cyan: #22d3ee;
+        --page: #f4f7fc;
+        --surface: #ffffff;
+        --text: #172033;
+        --muted: #475569;
+        --border: #dce3ef;
+        --primary: #4f46e5;
+        --primary-dark: #3730a3;
     }
 
     .stApp {
-        background:
-          radial-gradient(ellipse at 10% 0%,
-          rgba(91, 33, 182, .19), transparent 38%),
-          radial-gradient(ellipse at 95% 10%,
-          rgba(8, 145, 178, .12), transparent 35%),
-          var(--bg);
-        color: var(--text);
-        font-family: 'DM Sans', sans-serif;
+        background: var(--page) !important;
+        color: var(--text) !important;
+        font-family: 'DM Sans', Arial, sans-serif !important;
+        font-size: 17px !important;
     }
 
     [data-testid="stHeader"] {
-        background: rgba(11, 16, 32, .8);
+        background: rgba(244, 247, 252, .96) !important;
     }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #111a2e, #0b1020);
-        border-right: 1px solid var(--border);
+        background: #ffffff !important;
+        border-right: 1px solid var(--border) !important;
     }
 
     [data-testid="stSidebar"] * {
-        color: var(--text);
+        color: var(--text) !important;
     }
 
     .block-container {
-        max-width: 1280px;
+        max-width: 1250px;
         padding-top: 2rem;
         padding-bottom: 3rem;
     }
 
     h1, h2, h3 {
-        font-family: 'Space Grotesk', sans-serif !important;
-        letter-spacing: -.035em;
+        font-family: 'Space Grotesk', Arial, sans-serif !important;
+        color: #172554 !important;
+        letter-spacing: -.025em;
     }
 
     h1 {
-        font-size: clamp(2rem, 4vw, 3rem) !important;
+        font-size: clamp(2rem, 4vw, 2.8rem) !important;
     }
 
-    [data-testid="stMetric"] {
-        background: linear-gradient(145deg, #17233b, #111a2d);
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 1rem 1.1rem;
+    h2 {
+        font-size: 2rem !important;
     }
 
-    [data-testid="stMetricLabel"] {
-        color: var(--muted) !important;
+    h3 {
+        font-size: 1.45rem !important;
     }
 
-    [data-testid="stMetricValue"] {
-        color: #ffffff !important;
-        font-family: 'Space Grotesk', sans-serif;
+    p, label, .stMarkdown {
+        color: #334155;
+        font-size: 16px !important;
+        line-height: 1.7 !important;
+    }
+
+    [data-testid="stCaptionContainer"] {
+        color: #475569 !important;
+        font-size: 14px !important;
     }
 
     [data-testid="stTextInput"] input,
     [data-testid="stTextArea"] textarea {
-        background: #0e1729 !important;
-        color: #f4f7ff !important;
-        border: 1px solid #2b3956 !important;
-        border-radius: 12px !important;
+        background: #ffffff !important;
+        color: #172033 !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 10px !important;
+        font-size: 16px !important;
+        min-height: 44px;
+    }
+
+    [data-testid="stTextInput"] input::placeholder,
+    [data-testid="stTextArea"] textarea::placeholder {
+        color: #64748b !important;
+        opacity: 1 !important;
     }
 
     [data-testid="stTextInput"] input:focus,
     [data-testid="stTextArea"] textarea:focus {
-        border-color: var(--purple) !important;
-        box-shadow: 0 0 0 1px var(--purple) !important;
+        border-color: #6366f1 !important;
+        box-shadow: 0 0 0 1px #6366f1 !important;
+    }
+
+    [data-testid="stMetric"] {
+        background: #ffffff !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 16px !important;
+        padding: 1rem !important;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, .04);
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: #475569 !important;
+        font-size: 14px !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #172554 !important;
+        font-size: 2rem !important;
+        font-family: 'Space Grotesk', sans-serif !important;
     }
 
     .stButton > button,
     [data-testid="stFormSubmitButton"] button {
-        border-radius: 11px;
-        min-height: 2.8rem;
-        font-weight: 700;
-        border: 1px solid rgba(139, 92, 246, .5);
-        transition: all .18s ease;
+        border-radius: 10px !important;
+        min-height: 45px !important;
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        transition: all .15s ease;
     }
 
     .stButton > button[kind="primary"],
     [data-testid="stFormSubmitButton"] button[kind="primary"] {
-        background: linear-gradient(100deg, #7c3aed, #4f46e5);
-        color: white;
+        background: var(--primary) !important;
+        color: #ffffff !important;
+        border: 1px solid var(--primary) !important;
     }
 
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        border-color: #a78bfa;
+    .stButton > button[kind="primary"]:hover,
+    [data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
+        background: var(--primary-dark) !important;
+        border-color: var(--primary-dark) !important;
+    }
+
+    [data-testid="stTabs"] button {
+        color: #334155 !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
     }
 
     [data-testid="stExpander"] {
-        background: rgba(17, 26, 46, .75);
-        border: 1px solid var(--border);
-        border-radius: 13px;
+        background: #ffffff !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
     }
 
     [data-testid="stAlert"] {
-        border-radius: 12px;
+        border-radius: 12px !important;
+    }
+
+    [data-testid="stProgressBar"] > div > div {
+        background: #4f46e5 !important;
     }
 
     .hero {
-        padding: 1.7rem;
-        margin: .3rem 0 1.4rem;
-        border-radius: 22px;
-        border: 1px solid rgba(139, 92, 246, .35);
-        background: linear-gradient(
-          115deg,
-          rgba(91, 33, 182, .28),
-          rgba(17, 26, 46, .94) 55%,
-          rgba(8, 145, 178, .14)
-        );
+        padding: 1.8rem;
+        margin-bottom: 1.4rem;
+        border-radius: 20px;
+        border: 1px solid #c7d2fe;
+        background: linear-gradient(120deg, #ffffff, #eaf0ff);
+        box-shadow: 0 5px 24px rgba(30, 41, 59, .05);
     }
 
     .eyebrow {
-        color: #a5b4fc;
+        color: #4338ca;
         text-transform: uppercase;
-        letter-spacing: .16em;
-        font-size: .72rem;
+        letter-spacing: .14em;
+        font-size: 13px;
         font-weight: 700;
-        margin-bottom: .7rem;
+        margin-bottom: 10px;
     }
 
     .hero-title {
         font-family: 'Space Grotesk', sans-serif;
-        font-size: clamp(1.9rem, 4vw, 2.8rem);
+        color: #172554;
+        font-size: clamp(2rem, 4vw, 2.8rem);
         font-weight: 700;
-        line-height: 1.15;
-        color: white;
+        line-height: 1.2;
     }
 
     .hero-copy {
-        color: #b9c5dc;
-        max-width: 760px;
-        margin-top: .8rem;
+        color: #334155;
+        font-size: 17px;
         line-height: 1.7;
+        margin-top: 12px;
     }
 
     .section-kicker {
-        color: #a5b4fc;
-        font-size: .76rem;
+        color: #4338ca;
+        font-size: 13px;
         text-transform: uppercase;
-        letter-spacing: .13em;
+        letter-spacing: .12em;
         font-weight: 700;
-        margin: .8rem 0;
+        margin: 1rem 0 .6rem;
     }
 
     .footer-note {
-        color: #8190aa;
-        font-size: .82rem;
+        color: #64748b;
+        font-size: 13px;
         text-align: center;
         padding-top: 2rem;
     }
@@ -218,8 +256,8 @@ st.markdown(
         }
 
         .hero {
-            padding: 1.1rem;
-            border-radius: 16px;
+            padding: 1.2rem;
+            border-radius: 15px;
         }
     }
     </style>
@@ -229,16 +267,14 @@ st.markdown(
 
 
 # =========================================================
-# 3. SUPABASE CONFIGURATION
+# 3. SUPABASE SETTINGS
 # =========================================================
 
 def get_setting(name: str, default: str = "") -> str:
     try:
         value = st.secrets.get(name)
-
         if value is not None:
             return str(value).strip()
-
     except Exception:
         pass
 
@@ -251,7 +287,12 @@ def normalize_supabase_url(raw_url: str) -> str:
     if parsed.scheme != "https" or not parsed.netloc:
         raise RuntimeError("Supabase HTTPS URL valid nahi hai.")
 
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+    if (
+        parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
         raise RuntimeError("Supabase URL configuration check karein.")
 
     path = parsed.path.rstrip("/")
@@ -265,21 +306,19 @@ def normalize_supabase_url(raw_url: str) -> str:
             "SUPABASE_URL mein sirf project URL hona chahiye."
         )
 
-    return urlunsplit(
-        (parsed.scheme, parsed.netloc, "", "", "")
-    )
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
 def get_supabase_config() -> tuple[str, str]:
-    url = get_setting("SUPABASE_URL")
+    raw_url = get_setting("SUPABASE_URL")
     key = get_setting("SUPABASE_ANON_KEY")
 
-    if not url or not key:
+    if not raw_url or not key:
         raise RuntimeError(
-            "Supabase configuration missing hai."
+            "Supabase URL ya publishable/anon key missing hai."
         )
 
-    return normalize_supabase_url(url), key
+    return normalize_supabase_url(raw_url), key
 
 
 def get_supabase_client() -> Client:
@@ -287,7 +326,6 @@ def get_supabase_client() -> Client:
     client = create_client(url, key)
 
     token = st.session_state.get("access_token")
-
     if token:
         client.postgrest.auth(token)
 
@@ -295,7 +333,7 @@ def get_supabase_client() -> Client:
 
 
 # =========================================================
-# 4. SESSION MANAGEMENT
+# 4. SESSION AND EMAIL VALIDATION
 # =========================================================
 
 DEFAULTS = {
@@ -357,8 +395,7 @@ def get_authenticated_user() -> dict[str, str] | None:
         return None
 
     try:
-        client = get_supabase_client()
-        response = client.auth.get_user(token)
+        response = get_supabase_client().auth.get_user(token)
         user = getattr(response, "user", None)
 
         if not user or not getattr(user, "id", None):
@@ -380,7 +417,7 @@ def get_authenticated_user() -> dict[str, str] | None:
 
 
 # =========================================================
-# 5. LOGIN, SIGNUP AND PASSWORD RESET
+# 5. AUTHENTICATION: LOGIN, SIGNUP, RESET PASSWORD
 # =========================================================
 
 def render_authentication() -> None:
@@ -388,7 +425,9 @@ def render_authentication() -> None:
         """
         <div class="hero">
           <div class="eyebrow">PARALLEL AI WORKSPACE</div>
-          <div class="hero-title">Your AI team.<br>Your ideas. Better results.</div>
+          <div class="hero-title">
+            Your AI team.<br>Your ideas. Better results.
+          </div>
           <div class="hero-copy">
             Sign in to your workspace and let your configured AI agents
             help you complete complex tasks.
@@ -405,14 +444,11 @@ def render_authentication() -> None:
     with login_tab:
         with st.form("login_form"):
             email = st.text_input(
-                "Email address",
-                max_chars=254,
+                "Email address", max_chars=254
             ).strip().lower()
 
             password = st.text_input(
-                "Password",
-                type="password",
-                max_chars=256,
+                "Password", type="password", max_chars=256
             )
 
             submitted = st.form_submit_button(
@@ -424,7 +460,6 @@ def render_authentication() -> None:
         if submitted:
             if not validate_email(email) or not password:
                 st.error("Valid email aur password enter karein.")
-
             else:
                 try:
                     response = get_supabase_client().auth.sign_in_with_password(
@@ -434,25 +469,21 @@ def render_authentication() -> None:
                     if save_auth_session(response):
                         st.success("Login successful.")
                         st.rerun()
-
                     else:
                         st.warning(
-                            "Login session nahi mili. Email verification "
-                            "required ho sakti hai."
+                            "Login session nahi mili. Agar email verification "
+                            "enabled hai to inbox check karein."
                         )
 
-                except Exception:
-                    logger.warning("Login request failed.")
-                    st.error(
-                        "Login nahi ho saka. Email, password aur "
-                        "Supabase settings check karein."
-                    )
+                except Exception as exc:
+                    logger.exception("Login request failed.")
+                    st.error("Login nahi ho saka.")
+                    st.code(str(exc))
 
     with signup_tab:
         with st.form("signup_form"):
             email = st.text_input(
-                "Email address",
-                max_chars=254,
+                "Email address", max_chars=254
             ).strip().lower()
 
             password = st.text_input(
@@ -480,44 +511,48 @@ def render_authentication() -> None:
         if submitted:
             if not validate_email(email):
                 st.error("Valid email address enter karein.")
-
             elif len(password) < 12:
                 st.error("Password kam az kam 12 characters ka rakhein.")
-
             elif password != confirm:
                 st.error("Dono passwords match nahi karte.")
-
             elif not accepted:
                 st.error("Terms aur Privacy Policy accept karein.")
-
             else:
                 try:
                     response = get_supabase_client().auth.sign_up(
-                        {"email": email, "password": password}
+                        {
+                            "email": email,
+                            "password": password,
+                            "options": {
+                                "email_redirect_to": APP_URL,
+                            },
+                        }
                     )
 
                     if save_auth_session(response):
                         st.success("Account create ho gaya.")
                         st.rerun()
-
                     else:
                         st.success(
-                            "Signup request process ho gayi. "
-                            "Inbox aur spam folder check karein."
+                            "Signup request process ho gayi. Apni email "
+                            "check karein aur verification link par click karein."
+                        )
+                        st.info(
+                            "Agar verification link localhost par jata hai, "
+                            "Supabase Authentication > URL Configuration "
+                            "mein Site URL aur Redirect URLs dobara check karein."
                         )
 
-                except Exception:
-                    logger.warning("Signup request failed.")
-                    st.error(
-                        "Account create nahi ho saka. Supabase Auth "
-                        "settings aur server logs check karein."
-                    )
+                except Exception as exc:
+                    logger.exception("Signup request failed.")
+                    st.error("Account create nahi ho saka.")
+                    st.warning("Error detail (password share na karein):")
+                    st.code(str(exc))
 
     with reset_tab:
         with st.form("reset_form"):
             email = st.text_input(
-                "Account email",
-                max_chars=254,
+                "Account email", max_chars=254
             ).strip().lower()
 
             submitted = st.form_submit_button(
@@ -528,19 +563,20 @@ def render_authentication() -> None:
         if submitted:
             if not validate_email(email):
                 st.error("Valid email address enter karein.")
-
             else:
                 try:
-                    get_supabase_client().auth.reset_password_email(email)
-
+                    get_supabase_client().auth.reset_password_email(
+                        email,
+                        options={"redirect_to": APP_URL},
+                    )
                     st.success(
                         "Agar account maujood hai to reset email bhej di jayegi. "
                         "Inbox aur spam folder check karein."
                     )
-
-                except Exception:
-                    logger.warning("Password reset request failed.")
+                except Exception as exc:
+                    logger.exception("Password reset request failed.")
                     st.error("Password reset request process nahi ho saki.")
+                    st.code(str(exc))
 
 
 # =========================================================
@@ -570,7 +606,6 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
         record = rows[0]
         status = str(record.get("status", "")).lower()
         expires_at = record.get("expires_at")
-
         active = status == "active"
 
         if expires_at:
@@ -578,13 +613,10 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
                 expiry = datetime.fromisoformat(
                     expires_at.replace("Z", "+00:00")
                 )
-
                 if expiry.tzinfo is None:
                     expiry = expiry.replace(tzinfo=timezone.utc)
-
                 if expiry <= datetime.now(timezone.utc):
                     active = False
-
             except (ValueError, TypeError):
                 active = False
 
@@ -602,8 +634,7 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
         }
 
     except Exception:
-        logger.warning("Subscription lookup failed.")
-
+        logger.exception("Subscription lookup failed.")
         return {
             "plan": "free",
             "status": "unknown",
@@ -617,10 +648,7 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
 
 def get_today_task_count(user_id: str) -> int:
     start = datetime.now(timezone.utc).replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
+        hour=0, minute=0, second=0, microsecond=0
     ).isoformat()
 
     response = (
@@ -640,13 +668,18 @@ def save_task_history(
     task_text: str,
     result_text: str,
 ) -> None:
-    get_supabase_client().table(TASKS_TABLE).insert(
-        {
-            "user_id": user_id,
-            "task": task_text,
-            "result": result_text,
-        }
-    ).execute()
+    (
+        get_supabase_client()
+        .table(TASKS_TABLE)
+        .insert(
+            {
+                "user_id": user_id,
+                "task": task_text,
+                "result": result_text,
+            }
+        )
+        .execute()
+    )
 
 
 def render_history(user_id: str) -> None:
@@ -678,12 +711,12 @@ def render_history(user_id: str) -> None:
                 st.markdown(item.get("result", ""))
 
     except Exception:
-        logger.warning("Task history retrieval failed.")
+        logger.exception("Task history retrieval failed.")
         st.error("History load nahi ho saki. Database policies check karein.")
 
 
 # =========================================================
-# 8. DASHBOARD
+# 8. DASHBOARD AND AI TASK EXECUTION
 # =========================================================
 
 def render_dashboard(user: dict[str, str]) -> None:
@@ -693,7 +726,9 @@ def render_dashboard(user: dict[str, str]) -> None:
         """
         <div class="hero">
           <div class="eyebrow">AI WORKSPACE · MULTI-AGENT ORCHESTRATION</div>
-          <div class="hero-title">Turn complex tasks into<br>clear results.</div>
+          <div class="hero-title">
+            Turn complex tasks into<br>clear results.
+          </div>
           <div class="hero-copy">
             Apna task likhein. Aapke configured CrewAI agents task par
             kaam karenge. Clear instructions dein aur AI-generated
@@ -705,7 +740,6 @@ def render_dashboard(user: dict[str, str]) -> None:
     )
 
     subscription = get_subscription_status(user_id)
-
     paid_active = (
         subscription["status"] == "active"
         and subscription["plan"] in {"pro", "premium"}
@@ -713,9 +747,8 @@ def render_dashboard(user: dict[str, str]) -> None:
 
     try:
         used_today = get_today_task_count(user_id)
-
     except Exception:
-        logger.warning("Daily task count could not be retrieved.")
+        logger.exception("Daily task count failed.")
         st.error(
             "Task count verify nahi ho saka. Database configuration check karein."
         )
@@ -754,7 +787,7 @@ def render_dashboard(user: dict[str, str]) -> None:
     task_text = st.text_area(
         "Apna task likhein",
         max_chars=MAX_TASK_LENGTH,
-        height=190,
+        height=200,
         placeholder=(
             "Example: Explain artificial intelligence, give five real-life "
             "examples, and describe its advantages and disadvantages."
@@ -797,19 +830,16 @@ def render_dashboard(user: dict[str, str]) -> None:
 
             try:
                 save_task_history(user_id, clean_task, result_text)
-
             except Exception:
-                logger.exception("Task result could not be saved.")
+                logger.exception("Task history save failed.")
                 st.warning(
-                    "Task result generate ho gaya, lekin history mein save "
-                    "nahi ho saka."
+                    "Result generate ho gaya, lekin history mein save nahi ho saka."
                 )
 
             st.markdown(
                 '<div class="section-kicker">02 / Generated output</div>',
                 unsafe_allow_html=True,
             )
-
             st.subheader("Your AI Result")
 
             with st.container(border=True):
@@ -852,25 +882,22 @@ def render_subscription(user_id: str) -> None:
 
     with col1:
         st.markdown("### Free")
-        st.markdown("#### $0")
+        st.markdown("## $0")
         st.write("• 5 tasks per day")
         st.write("• AI task workspace")
         st.write("• Task history")
         st.write("• Basic account features")
-
         st.info("Free plan available.")
 
     with col2:
         st.markdown("### Pro")
-        st.markdown("#### Coming soon")
+        st.markdown("## Coming soon")
         st.write("• Higher task limits")
         st.write("• Advanced usage options")
         st.write("• Premium plan features")
-
         st.warning("Paid subscription activation is not configured yet.")
 
     st.divider()
-
     st.write(f"**Current plan:** {subscription['plan']}")
     st.write(f"**Status:** {subscription['status']}")
 
@@ -895,22 +922,21 @@ def render_security() -> None:
 
         - Strong, unique password use karein.
         - Password kisi ke saath share na karein.
-        - Groq API key ko GitHub source code mein na likhein.
-        - Supabase secrets ko Streamlit Cloud Secrets mein rakhein.
+        - Groq API key GitHub source code mein na likhein.
+        - Supabase secrets Streamlit Cloud Secrets mein rakhein.
         - Database tables par Row Level Security enabled rakhein.
-        - Apne account ke liye sirf authorized access use karein.
-        - Agar account access ka issue ho, password reset karein.
+        - API keys screenshots ya public repository mein share na karein.
+        - Account access ka issue ho to password reset karein.
         """
     )
 
     st.info(
-        "API keys ya passwords ko dashboard, screenshots ya public "
-        "GitHub repository mein share na karein."
+        "Apna password, Supabase secret key ya Groq API key kisi ke saath share na karein."
     )
 
 
 # =========================================================
-# 11. MAIN APPLICATION
+# 11. MAIN APP NAVIGATION
 # =========================================================
 
 def render_app(user: dict[str, str]) -> None:
@@ -920,7 +946,6 @@ def render_app(user: dict[str, str]) -> None:
     with st.sidebar:
         st.markdown("## 🤖 Parallel AI")
         st.caption("Multi-Agent Workspace")
-
         st.divider()
 
         st.caption("SIGNED IN AS")
@@ -934,7 +959,6 @@ def render_app(user: dict[str, str]) -> None:
                 "Subscription",
                 "Security",
             ],
-            label_visibility="visible",
         )
 
         st.divider()
@@ -942,42 +966,31 @@ def render_app(user: dict[str, str]) -> None:
         if st.button("Logout", use_container_width=True):
             try:
                 get_supabase_client().auth.sign_out()
-
             except Exception:
-                logger.warning("Remote logout failed.")
-
+                logger.exception("Remote logout failed.")
             finally:
                 clear_session()
                 st.rerun()
 
-        st.markdown(
-            """
-            <div style="color:#8190aa;font-size:12px;padding-top:24px;">
-                Parallel AI Workspace<br>
-                Powered by your configured agents
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
     if page == "Dashboard":
         render_dashboard(user)
-
     elif page == "Task History":
         render_history(user_id)
-
     elif page == "Subscription":
         render_subscription(user_id)
-
     elif page == "Security":
         render_security()
 
 
+# =========================================================
+# 12. APPLICATION ENTRY POINT
+# =========================================================
+
 def main() -> None:
     try:
         get_supabase_config()
-
     except Exception:
+        logger.exception("Supabase configuration check failed.")
         st.error(
             "Supabase setup check karein. Streamlit Cloud Secrets mein "
             "SUPABASE_URL aur SUPABASE_ANON_KEY sahi honi chahiye."
@@ -988,7 +1001,6 @@ def main() -> None:
 
     if user is None:
         render_authentication()
-
     else:
         render_app(user)
 

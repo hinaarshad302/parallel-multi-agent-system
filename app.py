@@ -1,38 +1,32 @@
 
 """
 Parallel Multi-Agent AI System
-Security-first Streamlit application.
-
-Important:
-- This is a hardened application baseline, NOT a security audit.
-- Payments are not activated by this file.
-- Configure Supabase Auth, RLS, database policies, secrets and
-  server-side payment verification before production billing.
+Streamlit application with Supabase authentication.
+Payments are not activated by this application.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
-import logging
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import streamlit as st
-from supabase import create_client, Client
-
+from supabase import Client, create_client
 from crew_runner import run_user_task as run_task
 
 
-# ---------------------------------------------------------
-# 1. APPLICATION CONFIGURATION
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 1. APP CONFIGURATION
+# --------------------------------------------------
 
 st.set_page_config(
     page_title="Parallel Multi-Agent AI System",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -44,14 +38,13 @@ TASKS_TABLE = "task_history"
 SUBSCRIPTIONS_TABLE = "subscriptions"
 
 
-# ---------------------------------------------------------
-# 2. SAFE CONFIGURATION ACCESS
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 2. SECRETS AND SUPABASE CLIENT
+# --------------------------------------------------
 
 def get_setting(name: str, default: str = "") -> str:
-    """Read configuration from Streamlit secrets or environment."""
     try:
-        value = st.secrets.get(name, None)
+        value = st.secrets.get(name)
         if value is not None:
             return str(value).strip()
     except Exception:
@@ -60,59 +53,77 @@ def get_setting(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def normalize_supabase_url(raw_url: str) -> str:
+    """Accept the project URL, not a REST/Auth endpoint URL."""
+    parsed = urlsplit(raw_url.strip())
+
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise RuntimeError("Supabase URL valid HTTPS URL honi chahiye.")
+
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError("Supabase URL configuration check karein.")
+
+    path = parsed.path.rstrip("/")
+
+    for suffix in ("/rest/v1", "/auth/v1"):
+        if path.endswith(suffix):
+            path = path[:-len(suffix)].rstrip("/")
+
+    if path:
+        raise RuntimeError(
+            "SUPABASE_URL mein sirf project URL hona chahiye; "
+            "extra path remove karein."
+        )
+
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+
 def get_supabase_config() -> tuple[str, str]:
-    url = get_setting("SUPABASE_URL")
+    raw_url = get_setting("SUPABASE_URL")
     key = get_setting("SUPABASE_ANON_KEY")
 
-    if not url or not key:
-        raise RuntimeError("Supabase configuration is missing.")
+    if not raw_url or not key:
+        raise RuntimeError("Supabase configuration missing hai.")
 
-    if not url.startswith("https://"):
-        raise RuntimeError("Invalid Supabase URL configuration.")
-
-    return url, key
+    return normalize_supabase_url(raw_url), key
 
 
 def get_supabase_client() -> Client:
-    """
-    Create a session-scoped client.
-    Do not cache a mutable authenticated client across users.
-    """
     url, key = get_supabase_config()
     client = create_client(url, key)
 
-    access_token = st.session_state.get("access_token")
-    if access_token:
-        client.postgrest.auth(access_token)
+    token = st.session_state.get("access_token")
+    if token:
+        client.postgrest.auth(token)
 
     return client
 
 
-# ---------------------------------------------------------
-# 3. SESSION STATE
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 3. SESSION
+# --------------------------------------------------
 
 DEFAULTS = {
-    "authenticated": False,
     "access_token": None,
     "refresh_token": None,
     "user_id": None,
     "user_email": None,
-    "page": "Dashboard",
 }
 
-for key, value in DEFAULTS.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+for name, value in DEFAULTS.items():
+    if name not in st.session_state:
+        st.session_state[name] = value
 
 
 def clear_session() -> None:
-    """Clear locally stored authentication state."""
-    for key, value in DEFAULTS.items():
-        st.session_state[key] = value
+    for name, value in DEFAULTS.items():
+        st.session_state[name] = value
 
 
 def validate_email(email: str) -> bool:
+    if len(email) > 254:
+        return False
+
     return bool(
         re.fullmatch(
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
@@ -123,11 +134,28 @@ def validate_email(email: str) -> bool:
     )
 
 
-def get_authenticated_user() -> dict[str, Any] | None:
-    """
-    Verify the access token with Supabase Auth.
-    Do not trust only a session_state user ID.
-    """
+def save_auth_session(response: Any) -> bool:
+    session = getattr(response, "session", None)
+    user = getattr(response, "user", None)
+
+    if not session or not user or not getattr(user, "id", None):
+        return False
+
+    access_token = getattr(session, "access_token", None)
+    refresh_token = getattr(session, "refresh_token", None)
+
+    if not access_token or not refresh_token:
+        return False
+
+    st.session_state.access_token = access_token
+    st.session_state.refresh_token = refresh_token
+    st.session_state.user_id = str(user.id)
+    st.session_state.user_email = getattr(user, "email", "") or ""
+
+    return True
+
+
+def get_authenticated_user() -> dict[str, str] | None:
     token = st.session_state.get("access_token")
     if not token:
         return None
@@ -141,9 +169,8 @@ def get_authenticated_user() -> dict[str, Any] | None:
             clear_session()
             return None
 
-        # Always use the ID returned by verified Auth.
         st.session_state.user_id = str(user.id)
-        st.session_state.user_email = getattr(user, "email", None)
+        st.session_state.user_email = getattr(user, "email", "") or ""
 
         return {
             "id": str(user.id),
@@ -151,36 +178,14 @@ def get_authenticated_user() -> dict[str, Any] | None:
         }
 
     except Exception:
-        logger.warning("Authentication verification failed.")
+        logger.warning("Session verification failed.")
         clear_session()
         return None
 
 
-# ---------------------------------------------------------
-# 4. LOGIN AND SIGNUP
-# ---------------------------------------------------------
-
-def save_auth_session(response: Any) -> bool:
-    session = getattr(response, "session", None)
-    user = getattr(response, "user", None)
-
-    if not session or not user:
-        return False
-
-    access_token = getattr(session, "access_token", None)
-    refresh_token = getattr(session, "refresh_token", None)
-
-    if not access_token or not refresh_token:
-        return False
-
-    st.session_state.authenticated = True
-    st.session_state.access_token = access_token
-    st.session_state.refresh_token = refresh_token
-    st.session_state.user_id = str(user.id)
-    st.session_state.user_email = getattr(user, "email", "") or ""
-
-    return True
-
+# --------------------------------------------------
+# 4. LOGIN, SIGNUP AND PASSWORD RESET
+# --------------------------------------------------
 
 def render_authentication() -> None:
     st.title("🤖 Parallel Multi-Agent AI System")
@@ -205,8 +210,7 @@ def render_authentication() -> None:
                 st.error("Valid email aur password enter karein.")
             else:
                 try:
-                    client = get_supabase_client()
-                    response = client.auth.sign_in_with_password(
+                    response = get_supabase_client().auth.sign_in_with_password(
                         {"email": email, "password": password}
                     )
 
@@ -214,57 +218,51 @@ def render_authentication() -> None:
                         st.success("Login successful.")
                         st.rerun()
                     else:
-                        st.error(
-                            "Login complete nahi hua. Email verification "
-                            "ya account status check karein."
+                        st.warning(
+                            "Login session nahi mili. Agar email verification "
+                            "enabled hai to pehle email verify karein."
                         )
 
                 except Exception:
-                    logger.warning("Login attempt failed.")
+                    logger.warning("Login request failed.")
                     st.error(
-                        "Login nahi ho saka. Email/password check karein "
-                        "ya kuch dair baad dobara try karein."
+                        "Login nahi ho saka. Email/password, email "
+                        "verification aur Supabase configuration check karein."
                     )
 
     with signup_tab:
         with st.form("signup_form"):
-            new_email = st.text_input(
+            email = st.text_input(
                 "Email address", max_chars=254
             ).strip().lower()
-            new_password = st.text_input(
+            password = st.text_input(
                 "Password (minimum 12 characters)",
                 type="password",
                 max_chars=256,
             )
-            confirm_password = st.text_input(
+            confirm = st.text_input(
                 "Confirm password", type="password", max_chars=256
             )
-
             accepted = st.checkbox(
                 "I agree to the website Terms and Privacy Policy."
             )
-
-            signup = st.form_submit_button(
+            submitted = st.form_submit_button(
                 "Create Account", use_container_width=True
             )
 
-        if signup:
-            if not validate_email(new_email):
+        if submitted:
+            if not validate_email(email):
                 st.error("Valid email address enter karein.")
-            elif len(new_password) < 12:
+            elif len(password) < 12:
                 st.error("Password kam az kam 12 characters ka rakhein.")
-            elif new_password != confirm_password:
+            elif password != confirm:
                 st.error("Dono passwords match nahi karte.")
             elif not accepted:
                 st.error("Terms aur Privacy Policy accept karein.")
             else:
                 try:
-                    client = get_supabase_client()
-                    response = client.auth.sign_up(
-                        {
-                            "email": new_email,
-                            "password": new_password,
-                        }
+                    response = get_supabase_client().auth.sign_up(
+                        {"email": email, "password": password}
                     )
 
                     if save_auth_session(response):
@@ -272,56 +270,51 @@ def render_authentication() -> None:
                         st.rerun()
                     else:
                         st.success(
-                            "Signup request submit ho gayi. Apni email "
-                            "check karein aur verification complete karein."
+                            "Signup request process ho gayi. Apni email "
+                            "check karein aur verification link par click karein."
                         )
 
                 except Exception:
                     logger.warning("Signup request failed.")
                     st.error(
-                        "Account create nahi ho saka. Dobara try karein."
+                        "Account create nahi ho saka. Supabase Auth settings, "
+                        "project URL aur Streamlit logs check karein."
                     )
 
     with reset_tab:
         with st.form("reset_form"):
-            reset_email = st.text_input(
+            email = st.text_input(
                 "Account email", max_chars=254
             ).strip().lower()
-            reset_submit = st.form_submit_button("Send Reset Email")
+            submitted = st.form_submit_button("Send Reset Email")
 
-        if reset_submit:
-            if not validate_email(reset_email):
+        if submitted:
+            if not validate_email(email):
                 st.error("Valid email address enter karein.")
             else:
                 try:
-                    client = get_supabase_client()
-                    client.auth.reset_password_email(reset_email)
+                    get_supabase_client().auth.reset_password_email(email)
                     st.success(
-                        "Agar account maujood hai, password reset email "
-                        "bhej di jayegi. Inbox aur spam folder check karein."
+                        "Agar account maujood hai, reset email bhej di jayegi. "
+                        "Inbox aur spam folder check karein."
                     )
                 except Exception:
                     logger.warning("Password reset request failed.")
-                    st.info(
-                        "Request process nahi ho saki. Kuch dair baad "
-                        "dobara try karein."
+                    st.error(
+                        "Reset request process nahi ho saki. "
+                        "Supabase Auth settings check karein."
                     )
 
 
-# ---------------------------------------------------------
+# --------------------------------------------------
 # 5. SUBSCRIPTION STATUS
-# ---------------------------------------------------------
+# --------------------------------------------------
 
 def get_subscription_status(user_id: str) -> dict[str, Any]:
-    """
-    Read subscription status from the database.
-    Never accept a plan or paid status from a browser form.
-    The database must have RLS policies restricting rows by auth.uid().
-    """
     try:
-        client = get_supabase_client()
         response = (
-            client.table(SUBSCRIPTIONS_TABLE)
+            get_supabase_client()
+            .table(SUBSCRIPTIONS_TABLE)
             .select("plan,status,expires_at")
             .eq("user_id", user_id)
             .limit(1)
@@ -351,7 +344,11 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
                 active = False
 
         if not active:
-            return {"plan": "free", "status": "inactive", "expires_at": None}
+            return {
+                "plan": "free",
+                "status": "inactive",
+                "expires_at": None,
+            }
 
         return {
             "plan": str(record.get("plan", "free")),
@@ -360,61 +357,48 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
         }
 
     except Exception:
-        # Fail closed: do not grant paid features when DB checks fail.
-        logger.error("Subscription status lookup failed.")
+        logger.warning("Subscription lookup failed.")
         return {"plan": "free", "status": "unknown", "expires_at": None}
 
 
-# ---------------------------------------------------------
-# 6. TASK QUOTA AND HISTORY
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 6. TASK HISTORY AND DAILY COUNT
+# --------------------------------------------------
 
 def get_today_task_count(user_id: str) -> int:
-    """Count today's task records using the authenticated database role."""
-    try:
-        client = get_supabase_client()
-        start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
+    start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
 
-        response = (
-            client.table(TASKS_TABLE)
-            .select("id", count="exact")
-            .eq("user_id", user_id)
-            .gte("created_at", start)
-            .execute()
-        )
+    response = (
+        get_supabase_client()
+        .table(TASKS_TABLE)
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .gte("created_at", start)
+        .execute()
+    )
 
-        return int(response.count or 0)
-
-    except Exception:
-        logger.error("Task quota lookup failed.")
-        raise RuntimeError("Task limit verify nahi ho saka.")
+    return int(response.count or 0)
 
 
 def save_task_history(
-    user_id: str,
-    task_text: str,
-    result_text: str,
+    user_id: str, task_text: str, result_text: str
 ) -> None:
-    """Save task history only for the verified user."""
-    client = get_supabase_client()
-    client.table(TASKS_TABLE).insert(
-        {
-            "user_id": user_id,
-            "task": task_text,
-            "result": result_text,
-        }
-    ).execute()
+    get_supabase_client().table(TASKS_TABLE).insert({
+        "user_id": user_id,
+        "task": task_text,
+        "result": result_text,
+    }).execute()
 
 
 def render_history(user_id: str) -> None:
     st.subheader("Task History")
 
     try:
-        client = get_supabase_client()
         response = (
-            client.table(TASKS_TABLE)
+            get_supabase_client()
+            .table(TASKS_TABLE)
             .select("task,result,created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
@@ -434,15 +418,15 @@ def render_history(user_id: str) -> None:
                 st.write(item.get("result", ""))
 
     except Exception:
-        logger.error("Task history retrieval failed.")
+        logger.warning("Task history retrieval failed.")
         st.error("History load nahi ho saki. Database policies check karein.")
 
 
-# ---------------------------------------------------------
-# 7. MAIN APPLICATION
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 7. MAIN DASHBOARD
+# --------------------------------------------------
 
-def render_app(user: dict[str, Any]) -> None:
+def render_app(user: dict[str, str]) -> None:
     user_id = user["id"]
     email = user["email"]
 
@@ -450,49 +434,46 @@ def render_app(user: dict[str, Any]) -> None:
         st.title("🤖 Multi-Agent AI")
         st.caption(f"Logged in: {email}")
 
-        selected_page = st.radio(
+        page = st.radio(
             "Menu",
             ["Dashboard", "Task History", "Subscription", "Security"],
         )
-        st.session_state.page = selected_page
 
         if st.button("Logout", use_container_width=True):
             try:
                 get_supabase_client().auth.sign_out()
             except Exception:
-                logger.warning("Remote logout request failed.")
+                logger.warning("Remote logout failed.")
             finally:
                 clear_session()
                 st.rerun()
 
-    if selected_page == "Dashboard":
+    if page == "Dashboard":
         st.title("Parallel Multi-Agent AI System")
         st.write(
-            "Apna task likhein. System aapke configured CrewAI agents "
-            "ke zariye result generate karega."
+            "Apna task likhein. Aapke configured CrewAI agents "
+            "task par kaam karenge."
         )
 
         subscription = get_subscription_status(user_id)
-        paid_active = subscription["status"] == "active"
+        paid_active = (
+            subscription["status"] == "active"
+            and subscription["plan"] in {"pro", "premium"}
+        )
 
         try:
             used_today = get_today_task_count(user_id)
         except Exception:
             st.error(
-                "Task limit verify nahi ho saki. Security ke liye task "
-                "run nahi kiya gaya."
+                "Task count verify nahi ho saka. Database configuration "
+                "check karein; security ke liye task run nahi kiya gaya."
             )
             return
 
         if paid_active:
-            st.info(
-                f"Plan: {subscription['plan']} — active. "
-                "Paid plan ki limit server-side enforce honi chahiye."
-            )
+            st.info(f"Plan: {subscription['plan']} — active")
         else:
-            st.info(
-                f"Free plan: {used_today}/{FREE_DAILY_LIMIT} tasks aaj."
-            )
+            st.info(f"Free plan: {used_today}/{FREE_DAILY_LIMIT} tasks aaj")
 
         task_text = st.text_area(
             "Apna task likhein",
@@ -501,41 +482,28 @@ def render_app(user: dict[str, Any]) -> None:
             placeholder="Misal: AI ke faide aur nuqsanat explain karein...",
         )
 
-        run_clicked = st.button(
-            "Run AI Agents",
-            type="primary",
-            use_container_width=True,
-        )
-
-        if run_clicked:
+        if st.button(
+            "Run AI Agents", type="primary", use_container_width=True
+        ):
             clean_task = task_text.strip()
 
             if not clean_task:
                 st.warning("Pehle task likhein.")
                 return
 
-            if len(clean_task) > MAX_TASK_LENGTH:
-                st.error("Task bohat lamba hai.")
-                return
-
             if not paid_active and used_today >= FREE_DAILY_LIMIT:
                 st.warning(
-                    "Aapki free daily limit complete ho gayi. "
-                    "Subscription page par plan details dekhein."
+                    "Free daily limit complete ho gayi. Subscription page "
+                    "par plan details dekhein."
                 )
                 return
 
-            # This UI-level count is not a robust concurrency-safe quota.
-            # Enforce real quotas atomically in a trusted server/database
-            # function before enabling public production access.
             with st.spinner("AI agents kaam kar rahe hain..."):
                 try:
                     result = run_task(clean_task)
 
                     if isinstance(result, dict):
-                        output = result.get("final_result")
-                        if output is None:
-                            output = result
+                        output = result.get("final_result", result)
                     else:
                         output = result
 
@@ -547,77 +515,58 @@ def render_app(user: dict[str, Any]) -> None:
                     st.markdown(result_text)
 
                     if isinstance(result, dict):
-                        with st.expander("Agent outputs"):
-                            st.json(
-                                {
-                                    key: value
-                                    for key, value in result.items()
-                                    if key in {
-                                        "review_result",
-                                        "agent_outputs",
-                                        "search_results",
-                                    }
-                                }
-                            )
+                        details = {
+                            key: value
+                            for key, value in result.items()
+                            if key in {
+                                "review_result",
+                                "agent_outputs",
+                                "search_results",
+                            }
+                        }
+                        if details:
+                            with st.expander("Agent outputs"):
+                                st.json(details)
 
                 except Exception:
-                    # Avoid rendering stack traces or secrets to users.
                     logger.exception("AI task execution failed.")
                     st.error(
-                        "Task complete nahi ho saka. API configuration "
-                        "aur server logs administrator check kare."
+                        "Task complete nahi ho saka. Groq API configuration, "
+                        "CrewAI code aur server logs check karein."
                     )
 
-    elif selected_page == "Task History":
+    elif page == "Task History":
         render_history(user_id)
 
-    elif selected_page == "Subscription":
+    elif page == "Subscription":
         st.title("Subscription Plans")
         subscription = get_subscription_status(user_id)
 
         st.write(f"Current plan: **{subscription['plan']}**")
         st.write(f"Status: **{subscription['status']}**")
 
-        st.markdown(
-            """
-            ### Payment safety
-
-            - JazzCash/Easypaisa payment abhi is page se process nahi hoti.
-            - Payment screenshot ya user-entered transaction ID se plan
-              activate nahi hona chahiye.
-            - Subscription sirf verified server-side payment callback
-              aur database transaction ke baad activate honi chahiye.
-            """
-        )
-
         st.warning(
-            "Paid subscription activation disabled hai jab tak verified "
-            "payment backend configure na ho."
+            "Paid subscription activation abhi enabled nahi hai. "
+            "Payment provider aur server-side payment verification "
+            "configure hone tak kisi payment ko paid plan na samjhein."
         )
 
-    elif selected_page == "Security":
+    elif page == "Security":
         st.title("Account Security")
-
         st.markdown(
             """
-            - Apna password kisi ke saath share na karein.
-            - API keys ko GitHub code mein na likhein.
-            - Supabase par email verification enable rakhein.
-            - Strong password aur available MFA options use karein.
-            - Suspicious activity par logout karein aur password reset karein.
+            - Password aur API keys kisi ke saath share na karein.
+            - API keys GitHub source code mein na likhein.
+            - Supabase email verification aur RLS policies check karein.
+            - Strong password use karein.
+            - Account issue par password reset karein.
             """
         )
 
-        st.caption(
-            "Account deletion, session revocation, MFA enforcement aur "
-            "security audit logs ke liye dedicated backend configuration "
-            "aur testing abhi zaroori hai."
-        )
 
-
-# ---------------------------------------------------------
+# --------------------------------------------------
 # 8. ENTRY POINT
-# ---------------------------------------------------------
+# --------------------------------------------------
 
 def main() -> None:
     st.markdown(
@@ -636,18 +585,18 @@ def main() -> None:
         get_supabase_config()
     except Exception:
         st.error(
-            "Supabase setup missing hai. Streamlit Secrets mein "
-            "SUPABASE_URL aur SUPABASE_ANON_KEY configure karein."
+            "Supabase setup check karein. Streamlit Secrets mein "
+            "SUPABASE_URL aur SUPABASE_ANON_KEY sahi honi chahiye. "
+            "URL mein /rest/v1 ya /auth/v1 path na ho."
         )
         st.stop()
 
     user = get_authenticated_user()
 
-    if not user:
+    if user is None:
         render_authentication()
-        return
-
-    render_app(user)
+    else:
+        render_app(user)
 
 
 if __name__ == "__main__":

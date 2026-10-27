@@ -21,7 +21,7 @@ from typing import Any
 import streamlit as st
 from supabase import create_client, Client
 
-from crew_runner import run_task
+from crew_runner import run_user_task as run_task
 
 
 # ---------------------------------------------------------

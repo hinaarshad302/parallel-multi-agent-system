@@ -1,5 +1,5 @@
-"""
-Parallel Multi-Agent AI System
+
+"""Parallel Multi-Agent AI System
 Streamlit + Supabase + CrewAI + Groq
 """
 
@@ -10,48 +10,42 @@ import os
 import re
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 import streamlit as st
 from supabase import Client, create_client
-from crew_runner import run_user_task as run_task
-
+from crew_runner import run_user_task
 
 # =========================================================
-# 1. APP CONFIGURATION
+# 1. CONFIGURATION
 # =========================================================
 
 st.set_page_config(
-    page_title="Parallel AI | Multi-Agent Workspace",
+    page_title="Parallel AI | Workspace",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("parallel_agents")
+logger = logging.getLogger("parallel_ai")
 
-MAX_TASK_LENGTH = 5000
-FREE_DAILY_LIMIT = 5
-TASKS_TABLE = "task_history"
-SUBSCRIPTIONS_TABLE = "subscriptions"
-
-# Your deployed Streamlit app URL
 APP_URL = (
     "https://parallel-multi-agent-system-kijnmteevpxi38tvdrrafi.streamlit.app/"
 )
-
+TASKS_TABLE = "task_history"
+SUBSCRIPTIONS_TABLE = "subscriptions"
+FREE_DAILY_LIMIT = 5
+MAX_TASK_LENGTH = 5000
 
 # =========================================================
-# 2. LIGHT, PROFESSIONAL DESIGN
+# 2. PROFESSIONAL LIGHT THEME
 # =========================================================
 
 st.markdown(
     """
     <style>
-    @import url(
-      'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap'
-    );
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
         --page: #f4f7fc;
@@ -64,23 +58,22 @@ st.markdown(
     }
 
     .stApp {
-        background: var(--page) !important;
-        color: var(--text) !important;
-        font-family: 'DM Sans', Arial, sans-serif !important;
-        font-size: 17px !important;
+        background: var(--page);
+        color: var(--text);
+        font-family: 'DM Sans', Arial, sans-serif;
     }
 
     [data-testid="stHeader"] {
-        background: rgba(244, 247, 252, .96) !important;
+        background: rgba(244,247,252,.96);
     }
 
     [data-testid="stSidebar"] {
-        background: #ffffff !important;
-        border-right: 1px solid var(--border) !important;
+        background: #fff;
+        border-right: 1px solid var(--border);
     }
 
     [data-testid="stSidebar"] * {
-        color: var(--text) !important;
+        color: var(--text);
     }
 
     .block-container {
@@ -90,115 +83,87 @@ st.markdown(
     }
 
     h1, h2, h3 {
-        font-family: 'Space Grotesk', Arial, sans-serif !important;
-        color: #172554 !important;
-        letter-spacing: -.025em;
+        font-family: 'Space Grotesk', Arial, sans-serif;
+        color: #172554;
+        letter-spacing: -.02em;
     }
 
-    h1 {
-        font-size: clamp(2rem, 4vw, 2.8rem) !important;
-    }
-
-    h2 {
-        font-size: 2rem !important;
-    }
-
-    h3 {
-        font-size: 1.45rem !important;
-    }
+    h1 { font-size: clamp(2rem, 4vw, 2.8rem); }
+    h2 { font-size: 2rem; }
+    h3 { font-size: 1.4rem; }
 
     p, label, .stMarkdown {
         color: #334155;
-        font-size: 16px !important;
-        line-height: 1.7 !important;
+        font-size: 16px;
+        line-height: 1.7;
     }
 
     [data-testid="stCaptionContainer"] {
-        color: #475569 !important;
-        font-size: 14px !important;
+        color: #475569;
+        font-size: 14px;
     }
 
     [data-testid="stTextInput"] input,
     [data-testid="stTextArea"] textarea {
-        background: #ffffff !important;
-        color: #172033 !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 10px !important;
-        font-size: 16px !important;
+        background: #fff;
+        color: #172033;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 16px;
         min-height: 44px;
     }
 
     [data-testid="stTextInput"] input::placeholder,
     [data-testid="stTextArea"] textarea::placeholder {
-        color: #64748b !important;
-        opacity: 1 !important;
-    }
-
-    [data-testid="stTextInput"] input:focus,
-    [data-testid="stTextArea"] textarea:focus {
-        border-color: #6366f1 !important;
-        box-shadow: 0 0 0 1px #6366f1 !important;
+        color: #64748b;
+        opacity: 1;
     }
 
     [data-testid="stMetric"] {
-        background: #ffffff !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 16px !important;
-        padding: 1rem !important;
-        box-shadow: 0 3px 12px rgba(15, 23, 42, .04);
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        padding: 1rem;
+        box-shadow: 0 3px 12px rgba(15,23,42,.04);
     }
 
-    [data-testid="stMetricLabel"] {
-        color: #475569 !important;
-        font-size: 14px !important;
-    }
-
+    [data-testid="stMetricLabel"] { color: #475569; }
     [data-testid="stMetricValue"] {
-        color: #172554 !important;
-        font-size: 2rem !important;
-        font-family: 'Space Grotesk', sans-serif !important;
+        color: #172554;
+        font-family: 'Space Grotesk', sans-serif;
     }
 
     .stButton > button,
     [data-testid="stFormSubmitButton"] button {
-        border-radius: 10px !important;
-        min-height: 45px !important;
-        font-size: 16px !important;
-        font-weight: 700 !important;
-        transition: all .15s ease;
+        border-radius: 10px;
+        min-height: 45px;
+        font-size: 16px;
+        font-weight: 700;
     }
 
     .stButton > button[kind="primary"],
     [data-testid="stFormSubmitButton"] button[kind="primary"] {
-        background: var(--primary) !important;
-        color: #ffffff !important;
-        border: 1px solid var(--primary) !important;
+        background: var(--primary);
+        color: white;
+        border: 1px solid var(--primary);
     }
 
     .stButton > button[kind="primary"]:hover,
     [data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
-        background: var(--primary-dark) !important;
-        border-color: var(--primary-dark) !important;
+        background: var(--primary-dark);
+        color: white;
     }
 
     [data-testid="stTabs"] button {
-        color: #334155 !important;
-        font-size: 16px !important;
-        font-weight: 600 !important;
+        color: #334155;
+        font-size: 16px;
+        font-weight: 600;
     }
 
     [data-testid="stExpander"] {
-        background: #ffffff !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 12px !important;
-    }
-
-    [data-testid="stAlert"] {
-        border-radius: 12px !important;
-    }
-
-    [data-testid="stProgressBar"] > div > div {
-        background: #4f46e5 !important;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
     }
 
     .hero {
@@ -206,22 +171,22 @@ st.markdown(
         margin-bottom: 1.4rem;
         border-radius: 20px;
         border: 1px solid #c7d2fe;
-        background: linear-gradient(120deg, #ffffff, #eaf0ff);
-        box-shadow: 0 5px 24px rgba(30, 41, 59, .05);
+        background: linear-gradient(120deg, #fff, #eaf0ff);
+        box-shadow: 0 5px 24px rgba(30,41,59,.05);
     }
 
     .eyebrow {
         color: #4338ca;
         text-transform: uppercase;
-        letter-spacing: .14em;
+        letter-spacing: .13em;
         font-size: 13px;
         font-weight: 700;
         margin-bottom: 10px;
     }
 
     .hero-title {
-        font-family: 'Space Grotesk', sans-serif;
         color: #172554;
+        font-family: 'Space Grotesk', sans-serif;
         font-size: clamp(2rem, 4vw, 2.8rem);
         font-weight: 700;
         line-height: 1.2;
@@ -251,23 +216,16 @@ st.markdown(
     }
 
     @media (max-width: 700px) {
-        .block-container {
-            padding: 1rem .8rem 2rem;
-        }
-
-        .hero {
-            padding: 1.2rem;
-            border-radius: 15px;
-        }
+        .block-container { padding: 1rem .8rem 2rem; }
+        .hero { padding: 1.2rem; }
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
 # =========================================================
-# 3. SUPABASE SETTINGS
+# 3. SUPABASE CONFIGURATION
 # =========================================================
 
 def get_setting(name: str, default: str = "") -> str:
@@ -281,51 +239,43 @@ def get_setting(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
-def normalize_supabase_url(raw_url: str) -> str:
-    parsed = urlsplit(raw_url.strip())
-
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise RuntimeError("Supabase HTTPS URL valid nahi hai.")
-
-    if (
-        parsed.username
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise RuntimeError("Supabase URL configuration check karein.")
-
-    path = parsed.path.rstrip("/")
-
-    for suffix in ("/rest/v1", "/auth/v1"):
-        if path.endswith(suffix):
-            path = path[:-len(suffix)].rstrip("/")
-
-    if path:
-        raise RuntimeError(
-            "SUPABASE_URL mein sirf project URL hona chahiye."
-        )
-
-    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
-
-
 def get_supabase_config() -> tuple[str, str]:
     raw_url = get_setting("SUPABASE_URL")
     key = get_setting("SUPABASE_ANON_KEY")
 
     if not raw_url or not key:
         raise RuntimeError(
-            "Supabase URL ya publishable/anon key missing hai."
+            "SUPABASE_URL ya SUPABASE_ANON_KEY missing hai."
         )
 
-    return normalize_supabase_url(raw_url), key
+    parsed = urlsplit(raw_url)
+
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path.rstrip("/")
+    ):
+        raise RuntimeError(
+            "SUPABASE_URL mein sirf project ka HTTPS URL dein."
+        )
+
+    return f"{parsed.scheme}://{parsed.netloc}", key
+
+
+@st.cache_resource
+def create_supabase_client() -> Client:
+    url, key = get_supabase_config()
+    return create_client(url, key)
 
 
 def get_supabase_client() -> Client:
-    url, key = get_supabase_config()
-    client = create_client(url, key)
-
+    client = create_supabase_client()
     token = st.session_state.get("access_token")
+
     if token:
         client.postgrest.auth(token)
 
@@ -333,7 +283,7 @@ def get_supabase_client() -> Client:
 
 
 # =========================================================
-# 4. SESSION AND EMAIL VALIDATION
+# 4. SESSION AND VALIDATION
 # =========================================================
 
 DEFAULTS = {
@@ -343,28 +293,29 @@ DEFAULTS = {
     "user_email": None,
 }
 
-for name, value in DEFAULTS.items():
-    if name not in st.session_state:
-        st.session_state[name] = value
+for key, value in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 def clear_session() -> None:
-    for name, value in DEFAULTS.items():
-        st.session_state[name] = value
+    for key, value in DEFAULTS.items():
+        st.session_state[key] = value
 
 
 def validate_email(email: str) -> bool:
+    email = email.strip()
+
     if len(email) > 254:
         return False
 
-    return bool(
-        re.fullmatch(
-            r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
-            r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-            r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+",
-            email,
-        )
+    pattern = (
+        r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+        r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+        r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
     )
+
+    return bool(re.fullmatch(pattern, email))
 
 
 def save_auth_session(response: Any) -> bool:
@@ -377,7 +328,7 @@ def save_auth_session(response: Any) -> bool:
     access_token = getattr(session, "access_token", None)
     refresh_token = getattr(session, "refresh_token", None)
 
-    if not access_token or not refresh_token:
+    if not access_token:
         return False
 
     st.session_state.access_token = access_token
@@ -402,9 +353,6 @@ def get_authenticated_user() -> dict[str, str] | None:
             clear_session()
             return None
 
-        st.session_state.user_id = str(user.id)
-        st.session_state.user_email = getattr(user, "email", "") or ""
-
         return {
             "id": str(user.id),
             "email": getattr(user, "email", "") or "",
@@ -417,21 +365,21 @@ def get_authenticated_user() -> dict[str, str] | None:
 
 
 # =========================================================
-# 5. AUTHENTICATION: LOGIN, SIGNUP, RESET PASSWORD
+# 5. LOGIN, SIGNUP AND PASSWORD RESET
 # =========================================================
 
 def render_authentication() -> None:
     st.markdown(
         """
         <div class="hero">
-          <div class="eyebrow">PARALLEL AI WORKSPACE</div>
-          <div class="hero-title">
-            Your AI team.<br>Your ideas. Better results.
-          </div>
-          <div class="hero-copy">
-            Sign in to your workspace and let your configured AI agents
-            help you complete complex tasks.
-          </div>
+            <div class="eyebrow">PARALLEL AI WORKSPACE</div>
+            <div class="hero-title">
+                Your AI team.<br>Your ideas. Better results.
+            </div>
+            <div class="hero-copy">
+                Sign in to your workspace and let your configured AI
+                agents help you complete complex tasks.
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -471,14 +419,16 @@ def render_authentication() -> None:
                         st.rerun()
                     else:
                         st.warning(
-                            "Login session nahi mili. Agar email verification "
-                            "enabled hai to inbox check karein."
+                            "Login session nahi mili. Email verification "
+                            "enabled ho to apna inbox check karein."
                         )
 
-                except Exception as exc:
+                except Exception:
                     logger.exception("Login request failed.")
-                    st.error("Login nahi ho saka.")
-                    st.code(str(exc))
+                    st.error(
+                        "Login nahi ho saka. Email, password aur "
+                        "Supabase Auth settings check karein."
+                    )
 
     with signup_tab:
         with st.form("signup_form"):
@@ -534,20 +484,21 @@ def render_authentication() -> None:
                         st.rerun()
                     else:
                         st.success(
-                            "Signup request process ho gayi. Apni email "
-                            "check karein aur verification link par click karein."
+                            "Signup request process ho gayi. Email inbox "
+                            "aur spam folder mein verification link check karein."
                         )
                         st.info(
-                            "Agar verification link localhost par jata hai, "
                             "Supabase Authentication > URL Configuration "
-                            "mein Site URL aur Redirect URLs dobara check karein."
+                            "mein Site URL aur Redirect URLs mein app URL "
+                            "allowed hona chahiye."
                         )
 
-                except Exception as exc:
+                except Exception:
                     logger.exception("Signup request failed.")
-                    st.error("Account create nahi ho saka.")
-                    st.warning("Error detail (password share na karein):")
-                    st.code(str(exc))
+                    st.error(
+                        "Account create nahi ho saka. Agar bohat dafa "
+                        "signup try kiya hai to kuch der baad dobara try karein."
+                    )
 
     with reset_tab:
         with st.form("reset_form"):
@@ -565,7 +516,7 @@ def render_authentication() -> None:
                 st.error("Valid email address enter karein.")
             else:
                 try:
-                    get_supabase_client().auth.reset_password_email(
+                    get_supabase_client().auth.reset_password_for_email(
                         email,
                         options={"redirect_to": APP_URL},
                     )
@@ -573,10 +524,12 @@ def render_authentication() -> None:
                         "Agar account maujood hai to reset email bhej di jayegi. "
                         "Inbox aur spam folder check karein."
                     )
-                except Exception as exc:
+                except Exception:
                     logger.exception("Password reset request failed.")
-                    st.error("Password reset request process nahi ho saki.")
-                    st.code(str(exc))
+                    st.error(
+                        "Reset request process nahi ho saki. "
+                        "Supabase Auth settings check karein."
+                    )
 
 
 # =========================================================
@@ -604,11 +557,20 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
             }
 
         record = rows[0]
+        plan = str(record.get("plan", "free")).lower()
         status = str(record.get("status", "")).lower()
         expires_at = record.get("expires_at")
-        active = status == "active"
 
-        if expires_at:
+        if plan not in {"free", "pro", "premium"}:
+            return {
+                "plan": "free",
+                "status": "inactive",
+                "expires_at": None,
+            }
+
+        active = status == "active" and plan in {"pro", "premium"}
+
+        if active and expires_at:
             try:
                 expiry = datetime.fromisoformat(
                     expires_at.replace("Z", "+00:00")
@@ -617,18 +579,18 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
                     expiry = expiry.replace(tzinfo=timezone.utc)
                 if expiry <= datetime.now(timezone.utc):
                     active = False
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, AttributeError):
                 active = False
 
         if not active:
             return {
                 "plan": "free",
-                "status": "inactive",
+                "status": "inactive" if status != "free" else "free",
                 "expires_at": None,
             }
 
         return {
-            "plan": str(record.get("plan", "free")),
+            "plan": plan,
             "status": "active",
             "expires_at": expires_at,
         }
@@ -647,7 +609,8 @@ def get_subscription_status(user_id: str) -> dict[str, Any]:
 # =========================================================
 
 def get_today_task_count(user_id: str) -> int:
-    start = datetime.now(timezone.utc).replace(
+    now = datetime.now(timezone.utc)
+    start = now.replace(
         hour=0, minute=0, second=0, microsecond=0
     ).isoformat()
 
@@ -684,7 +647,7 @@ def save_task_history(
 
 def render_history(user_id: str) -> None:
     st.title("Task History")
-    st.caption("Review your previous AI tasks and generated results.")
+    st.caption("Apne pichle tasks aur AI-generated results dekhein.")
 
     try:
         response = (
@@ -704,15 +667,17 @@ def render_history(user_id: str) -> None:
             return
 
         for index, item in enumerate(rows, start=1):
-            label = str(item.get("task", "Task"))[:100]
+            task_label = str(item.get("task", "Task"))[:100]
 
-            with st.expander(f"{index}. {label}"):
+            with st.expander(f"{index}. {task_label}"):
                 st.caption(str(item.get("created_at", "")))
-                st.markdown(item.get("result", ""))
+                st.markdown(str(item.get("result", "")))
 
     except Exception:
-        logger.exception("Task history retrieval failed.")
-        st.error("History load nahi ho saki. Database policies check karein.")
+        logger.exception("History retrieval failed.")
+        st.error(
+            "History load nahi ho saki. Database table aur RLS policies check karein."
+        )
 
 
 # =========================================================
@@ -725,15 +690,14 @@ def render_dashboard(user: dict[str, str]) -> None:
     st.markdown(
         """
         <div class="hero">
-          <div class="eyebrow">AI WORKSPACE · MULTI-AGENT ORCHESTRATION</div>
-          <div class="hero-title">
-            Turn complex tasks into<br>clear results.
-          </div>
-          <div class="hero-copy">
-            Apna task likhein. Aapke configured CrewAI agents task par
-            kaam karenge. Clear instructions dein aur AI-generated
-            result hasil karein.
-          </div>
+            <div class="eyebrow">AI WORKSPACE · MULTI-AGENT ORCHESTRATION</div>
+            <div class="hero-title">
+                Turn complex tasks into<br>clear results.
+            </div>
+            <div class="hero-copy">
+                Apna task likhein aur configured CrewAI agents se
+                AI-generated result hasil karein.
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -750,7 +714,7 @@ def render_dashboard(user: dict[str, str]) -> None:
     except Exception:
         logger.exception("Daily task count failed.")
         st.error(
-            "Task count verify nahi ho saka. Database configuration check karein."
+            "Task count verify nahi ho saka. Database settings check karein."
         )
         return
 
@@ -784,88 +748,102 @@ def render_dashboard(user: dict[str, str]) -> None:
         unsafe_allow_html=True,
     )
 
-    task_text = st.text_area(
-        "Apna task likhein",
-        max_chars=MAX_TASK_LENGTH,
-        height=200,
-        placeholder=(
-            "Example: Explain artificial intelligence, give five real-life "
-            "examples, and describe its advantages and disadvantages."
-        ),
-        help="Behtar result ke liye goal, context aur required output likhein.",
-    )
+    with st.form("ai_task_form"):
+        task_text = st.text_area(
+            "Apna task likhein",
+            max_chars=MAX_TASK_LENGTH,
+            height=200,
+            placeholder=(
+                "Example: Explain artificial intelligence, give five "
+                "real-life examples, and describe its advantages."
+            ),
+            help="Goal, context aur required output clearly likhein.",
+        )
 
-    run_clicked = st.button(
-        "Run AI Agents  →",
-        type="primary",
-        use_container_width=True,
-    )
+        run_clicked = st.form_submit_button(
+            "Run AI Agents  →",
+            type="primary",
+            use_container_width=True,
+        )
 
-    if run_clicked:
-        clean_task = task_text.strip()
+    if not run_clicked:
+        return
 
-        if not clean_task:
-            st.warning("Pehle task likhein.")
-            return
+    clean_task = task_text.strip()
 
-        if not paid_active and used_today >= FREE_DAILY_LIMIT:
-            st.warning(
-                "Free daily limit complete ho gayi. "
-                "Subscription page par plan details dekhein."
-            )
+    if not clean_task:
+        st.warning("Pehle apna task likhein.")
+        return
+
+    if subscription["status"] == "unknown":
+        st.error(
+            "Subscription status verify nahi ho saka. Filhal task run nahi "
+            "kiya gaya. Database configuration check karein."
+        )
+        return
+
+    if not paid_active and used_today >= FREE_DAILY_LIMIT:
+        st.warning(
+            "Aaj ki free task limit complete ho gayi. Subscription page "
+            "par available plan details dekhein."
+        )
+        return
+
+    try:
+        with st.spinner("AI agents kaam kar rahe hain. Please wait..."):
+            result = run_user_task(clean_task)
+
+        if isinstance(result, dict):
+            output = result.get("final_result", result)
+        else:
+            output = result
+
+        result_text = (
+            output if isinstance(output, str) else str(output)
+        )
+
+        if not result_text.strip():
+            st.error("AI agents ne empty result return kiya.")
             return
 
         try:
-            with st.spinner(
-                "AI agents kaam kar rahe hain. Please wait..."
-            ):
-                result = run_task(clean_task)
-
-            if isinstance(result, dict):
-                output = result.get("final_result", result)
-            else:
-                output = result
-
-            result_text = str(output)
-
-            try:
-                save_task_history(user_id, clean_task, result_text)
-            except Exception:
-                logger.exception("Task history save failed.")
-                st.warning(
-                    "Result generate ho gaya, lekin history mein save nahi ho saka."
-                )
-
-            st.markdown(
-                '<div class="section-kicker">02 / Generated output</div>',
-                unsafe_allow_html=True,
-            )
-            st.subheader("Your AI Result")
-
-            with st.container(border=True):
-                st.markdown(result_text)
-
-            if isinstance(result, dict):
-                details = {
-                    key: value
-                    for key, value in result.items()
-                    if key in {
-                        "review_result",
-                        "agent_outputs",
-                        "search_results",
-                    }
-                }
-
-                if details:
-                    with st.expander("View agent details"):
-                        st.json(details)
-
+            save_task_history(user_id, clean_task, result_text)
         except Exception:
-            logger.exception("AI task execution failed.")
-            st.error(
-                "Task complete nahi ho saka. Groq API configuration, "
-                "CrewAI code aur server logs check karein."
+            logger.exception("Task history save failed.")
+            st.warning(
+                "Result generate ho gaya, lekin history save nahi ho saki."
             )
+
+        st.markdown(
+            '<div class="section-kicker">02 / Generated output</div>',
+            unsafe_allow_html=True,
+        )
+        st.subheader("Your AI Result")
+
+        with st.container(border=True):
+            st.markdown(result_text)
+
+        if isinstance(result, dict):
+            details = {
+                key: value
+                for key, value in result.items()
+                if key in {
+                    "review_result",
+                    "agent_outputs",
+                    "search_results",
+                }
+            }
+
+            if details:
+                with st.expander("View agent details"):
+                    st.json(details)
+
+    except Exception:
+        logger.exception("AI task execution failed.")
+        st.error(
+            "Task complete nahi ho saka. Groq API configuration, "
+            "CrewAI code aur deployment logs check karein."
+        )
 
 
 # =========================================================
@@ -874,7 +852,7 @@ def render_dashboard(user: dict[str, str]) -> None:
 
 def render_subscription(user_id: str) -> None:
     st.title("Subscription Plans")
-    st.caption("Check your current plan and usage limits.")
+    st.caption("Apna current plan aur usage limits dekhein.")
 
     subscription = get_subscription_status(user_id)
 
@@ -883,28 +861,28 @@ def render_subscription(user_id: str) -> None:
     with col1:
         st.markdown("### Free")
         st.markdown("## $0")
-        st.write("• 5 tasks per day")
-        st.write("• AI task workspace")
-        st.write("• Task history")
-        st.write("• Basic account features")
+        st.write("5 tasks per day")
+        st.write("AI task workspace")
+        st.write("Task history")
+        st.write("Basic account features")
         st.info("Free plan available.")
 
     with col2:
         st.markdown("### Pro")
         st.markdown("## Coming soon")
-        st.write("• Higher task limits")
-        st.write("• Advanced usage options")
-        st.write("• Premium plan features")
-        st.warning("Paid subscription activation is not configured yet.")
+        st.write("Higher task limits")
+        st.write("Advanced usage options")
+        st.write("Premium plan features")
+        st.warning("Paid subscription activation is not configured.")
 
     st.divider()
     st.write(f"**Current plan:** {subscription['plan']}")
     st.write(f"**Status:** {subscription['status']}")
 
     st.warning(
-        "Payments aur paid-plan activation abhi enabled nahi hain. "
-        "Payment provider aur server-side verification configure hone "
-        "tak kisi payment ko paid plan na samjhein."
+        "Payments aur paid-plan activation abhi configure nahi hain. "
+        "Payment provider aur trusted server-side verification ke baghair "
+        "kisi payment ko paid plan nahi samjha jayega."
     )
 
 
@@ -914,15 +892,15 @@ def render_subscription(user_id: str) -> None:
 
 def render_security() -> None:
     st.title("Account Security")
-    st.caption("Keep your account and application credentials secure.")
+    st.caption("Apne account aur API credentials ko secure rakhein.")
 
     st.markdown(
         """
         ### Security checklist
 
-        - Strong, unique password use karein.
+        - Strong aur unique password use karein.
         - Password kisi ke saath share na karein.
-        - Groq API key GitHub source code mein na likhein.
+        - Groq API key source code mein na likhein.
         - Supabase secrets Streamlit Cloud Secrets mein rakhein.
         - Database tables par Row Level Security enabled rakhein.
         - API keys screenshots ya public repository mein share na karein.
@@ -931,12 +909,13 @@ def render_security() -> None:
     )
 
     st.info(
-        "Apna password, Supabase secret key ya Groq API key kisi ke saath share na karein."
+        "Apna password, Supabase secret key ya Groq API key kisi ke "
+        "saath share na karein."
     )
 
 
 # =========================================================
-# 11. MAIN APP NAVIGATION
+# 11. APP NAVIGATION
 # =========================================================
 
 def render_app(user: dict[str, str]) -> None:
@@ -967,7 +946,7 @@ def render_app(user: dict[str, str]) -> None:
             try:
                 get_supabase_client().auth.sign_out()
             except Exception:
-                logger.exception("Remote logout failed.")
+                logger.warning("Remote logout failed.")
             finally:
                 clear_session()
                 st.rerun()

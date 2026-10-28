@@ -1,101 +1,108 @@
-# 🤖 Parallel Multi-Agent AI System
+# Nexora AI — Parallel Multi-Agent AI Workspace
 
-An AI-powered task execution application built with **Python, CrewAI, Groq API, and Streamlit**. The system uses four specialized AI agents to plan, execute, review, and refine user tasks through a coordinated workflow.
+A professional AI workspace built with Python, CrewAI, Groq API, Streamlit, and Supabase. Nexora AI uses multiple AI agents to plan tasks, generate solutions, review outputs, and deliver structured results through a simple web interface.
+
+## 🚀 Live Application
+
+**Live Demo:**  
+https://parallel-multi-agent-system-kijnmteevpxi38tvdrrafi.streamlit.app/
+
+**GitHub Repository:**  
+https://github.com/hinaarshad302/parallel-multi-agent-system
+
+---
 
 ## 📌 Project Overview
 
-The Parallel Multi-Agent AI System demonstrates how multiple AI agents can collaborate to complete a user's request. Each agent has a specific responsibility, helping organize the task execution process and improve the quality of the final output.
+Nexora AI is a parallel multi-agent AI system designed to divide complex tasks into smaller steps and process them through specialized AI agents.
 
-Users can submit tasks through a Streamlit web interface and view the final answer, quality review, and individual agent outputs.
+Instead of relying on a single AI response, the system uses a coordinated workflow in which agents can plan, execute, review, and improve the final output.
 
-## ✨ Features
+The application provides a user-friendly Streamlit interface for submitting AI tasks, viewing generated results, and accessing task history.
 
-- **Multi-Agent Architecture:** Four specialized AI agents collaborate to process user requests.
-- **Task Planning:** The Planner Agent breaks down the user's request into a structured plan.
-- **Task Execution:** The Worker Agent generates the requested output.
-- **Quality Checking:** The Checker Agent evaluates the output against the user's requirements.
-- **Final Review:** The Final Reviewer prepares the final response using the task results and review.
-- **Interactive Web Interface:** A user-friendly Streamlit application.
-- **Groq API Integration:** Uses a Groq-compatible language model through the configured LLM integration.
-- **Task Results:** View the final answer, quality review, and agent outputs.
-- **Multiple Task Types:** Supports tasks such as explanations, writing, coding assistance, and structured content generation.
+## ✨ Key Features
 
-## 🏗️ System Architecture
-
-The application follows a four-agent workflow.
-
-```mermaid
-flowchart TD
-    A[User Submits Task] --> B[Planner Agent]
-    B --> C[Worker Agent]
-    C --> D[Checker Agent]
-    D --> E[Final Reviewer]
-    E --> F[Final Answer]
-    E --> G[Quality Review and Agent Outputs]
-```
-
-### The Four AI Agents
-
-| Agent | Responsibility |
-|---|---|
-| **1. Planner Agent** | Understands the task and creates a plan with completion criteria. |
-| **2. Worker Agent** | Executes the task and generates the requested deliverable. |
-| **3. Checker Agent** | Reviews the worker's output against the user's explicit requirements. |
-| **4. Final Reviewer** | Produces the final response after considering the task results and review. |
-
-**Workflow note:** The application coordinates the agents through CrewAI. The current implementation uses a sequential crew process, with the Planner and Worker tasks configured for asynchronous execution. This does not mean all four agents execute simultaneously.
+- **Multi-Agent Workflow:** Coordinates multiple AI agents to process tasks.
+- **Task Planning:** Breaks user requests into manageable steps.
+- **AI Task Execution:** Generates responses using supported AI models.
+- **Quality Review:** Reviews generated output before presenting the final result.
+- **Task History:** Provides an interface for viewing previously saved tasks.
+- **User Authentication:** Supports account-related functionality through Supabase.
+- **Modern Dashboard:** Includes an overview, task studio, history, subscription, and account pages.
+- **Structured Results:** Displays final responses and available agent outputs.
+- **Search Evidence:** Provides a section for search evidence when available.
+- **Streamlit Interface:** Runs through a browser-based application.
 
 ## 🛠️ Technology Stack
 
-- **Programming Language:** Python
-- **AI Agent Framework:** CrewAI
-- **LLM Provider:** Groq API
-- **Web Framework:** Streamlit
-- **LLM Integration:** LiteLLM through the configured CrewAI integration
-- **Version Control:** Git and GitHub
-- **Deployment Platform:** Streamlit Community Cloud
+| Technology | Purpose |
+|---|---|
+| Python | Main programming language |
+| CrewAI | Multi-agent orchestration |
+| Groq API | AI model access |
+| Streamlit | Web application interface |
+| Supabase | Authentication and backend data services |
+| Git and GitHub | Version control and source code hosting |
 
-## 📂 Project Structure
+## 🤖 Multi-Agent Architecture
+
+The application uses specialized agents to process a task through a coordinated workflow.
+
+### 1. Planner Agent
+Analyzes the user's request and identifies the steps needed to complete the task.
+
+### 2. Worker Agent
+Works on the task using the plan and generates the required content or solution.
+
+### 3. Checker Agent
+Reviews the work for quality, completeness, and potential issues.
+
+### 4. Final Reviewer Agent
+Uses the available task outputs and review context to prepare the final response.
+
+### Workflow
+
+User Request → Planner → Worker → Checker → Final Reviewer → Final Result
+
+The exact execution order and available agent outputs depend on the implementation in the project code.
+
+## 📂 Application Pages
+
+### Overview
+Displays the main dashboard and introduces the available application features.
+
+### Run AI Task
+Allows users to enter a task, run the multi-agent workflow, and view the generated result and agent outputs.
+
+### Task History
+Provides an interface to search and review previously saved tasks.
+
+### Subscription
+Displays the subscription interface and current plan information. Payment activation depends on the application's configured payment functionality.
+
+### Account
+Displays account-related information and provides available account actions.
+
+## 📁 Project Structure
+
+The project may contain additional files depending on the current repository version.
 
 ```text
-parallel-multi-agent-ai-system/
+parallel-multi-agent-system/
 │
 ├── app.py
 ├── crew_runner.py
-├── llm_config.py
 ├── requirements.txt
 ├── README.md
-│
-└── agents/
-    ├── planner_agent.py
-    ├── worker_agent.py
-    ├── checker_agent.py
-    └── final_reviewer_agent.py
+└── .streamlit/
+    └── secrets.toml
 ```
 
-*This structure represents the project's main files. Additional configuration files may exist in the repository.*
+**Important:** Keep `.streamlit/secrets.toml` and all API keys private. Never upload secret credentials to a public GitHub repository.
 
-### Main Files
+## ⚙️ Installation and Setup
 
-- `app.py` — Streamlit user interface and application pages.
-- `crew_runner.py` — Creates the agents, defines tasks, coordinates execution, and collects results.
-- `llm_config.py` — Configures the language model connection.
-- `agents/planner_agent.py` — Defines the Planner Agent.
-- `agents/worker_agent.py` — Defines the Worker Agent.
-- `agents/checker_agent.py` — Defines the Checker Agent.
-- `agents/final_reviewer_agent.py` — Defines the Final Reviewer.
-- `requirements.txt` — Lists the Python dependencies.
-
-## ⚙️ Setup and Installation
-
-### Prerequisites
-
-Before running the application locally, you need:
-
-- Python installed on your computer.
-- A GitHub account to access the source code.
-- A Groq API key.
-- Internet access for API requests.
+Follow these steps to run the project locally.
 
 ### Step 1: Clone the Repository
 
@@ -111,200 +118,117 @@ Move into the project folder:
 cd parallel-multi-agent-system
 ```
 
-### Step 2: Install Dependencies
+### Step 2: Create a Virtual Environment
 
-Install the packages listed in `requirements.txt`:
+```bash
+python -m venv venv
+```
+
+Activate it on Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+### Step 3: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 3: Configure Environment Variables
+### Step 4: Configure Environment Secrets
 
-The application requires a Groq API key and a model name.
+Create a file named `secrets.toml` inside the `.streamlit` directory.
 
-For local Streamlit development, create the following file:
-
-```text
-.streamlit/secrets.toml
-```
-
-Add your configuration:
+Example:
 
 ```toml
 GROQ_API_KEY = "your_groq_api_key"
-GROQ_MODEL = "openai/gpt-oss-120b"
+SUPABASE_URL = "your_supabase_project_url"
+SUPABASE_KEY = "your_supabase_key"
 ```
 
-Replace `your_groq_api_key` with your own API key.
+Replace the example values with your actual credentials. Use the correct secret names expected by your application code.
 
-**Security warning:** Never publish your real API key in source code, GitHub commits, screenshots, or public files. Keep `secrets.toml` out of version control.
+Do not commit real credentials to GitHub.
 
-### Step 4: Run the Application
-
-Start the Streamlit application:
+### Step 5: Run the Application
 
 ```bash
 streamlit run app.py
 ```
 
-Streamlit will display the local address for opening the application in your browser.
+The application should open in your browser. If it does not, follow the local URL shown in the terminal.
 
-## ☁️ Deployment on Streamlit Community Cloud
+## 🔐 Authentication and Database
 
-You can deploy the project using your GitHub repository.
+Supabase is used for the application's authentication and backend data functionality.
 
-1. Push the project files to GitHub.
-2. Open [Streamlit Community Cloud](https://share.streamlit.io/).
-3. Sign in and create a new app.
-4. Select the `parallel-multi-agent-system` repository.
-5. Choose the branch containing your project.
-6. Set the main application file to `app.py`.
-7. Open the app's **Settings → Secrets** section.
-8. Add your Groq configuration:
+Before deploying the application, verify that:
 
-```toml
-GROQ_API_KEY = "your_groq_api_key"
-GROQ_MODEL = "openai/gpt-oss-120b"
-```
+- Supabase project credentials are configured correctly.
+- Authentication flows work as expected.
+- User-specific data is associated with the correct account.
+- Database tables and columns match the application code.
+- Row Level Security (RLS) policies protect private user data.
+- Secret keys are stored securely in the deployment environment.
 
-9. Save the secrets and deploy the application.
+Task history and account features depend on the application's current database implementation and configuration.
 
-Use the same secret names that your `llm_config.py` expects. The model name shown above is the project's configured default and must be supported by the provider and integration versions in use.
+## 🧪 Testing Checklist
 
-## 🚀 How to Use the Application
+Use this checklist after making changes or deploying a new version.
 
-1. Open the deployed Streamlit application.
-2. Navigate to **New Task**.
-3. Enter a clear task or question.
-4. Run the task.
-5. Review the **Final Answer**.
-6. Open **Quality Review** to inspect the Checker Agent's evaluation.
-7. Open **Agent Outputs** to inspect the individual agents' results.
+- [ ] Application opens successfully.
+- [ ] Overview page displays correctly.
+- [ ] User authentication works.
+- [ ] Run AI Task accepts a user request.
+- [ ] The multi-agent workflow executes successfully.
+- [ ] Final results display correctly.
+- [ ] Agent outputs display when available.
+- [ ] Task history saves and displays the required results.
+- [ ] Subscription page opens correctly.
+- [ ] Account page opens correctly.
+- [ ] Sidebar navigation works.
+- [ ] Application works on desktop and mobile screens.
 
-For the best results, describe your requirements clearly, including the desired language, format, number of bullet points, or output length.
+## 🚀 Deployment
 
-### Example Task
+The application is deployed through Streamlit Community Cloud.
 
-```text
-Explain Artificial Intelligence in 5 simple bullet points.
-Do not add an introduction or conclusion.
-```
+Live application:
 
-The system should produce five bullet points, evaluate the response against the requirements, and display the final answer.
+https://parallel-multi-agent-system-kijnmteevpxi38tvdrrafi.streamlit.app/
 
-## 🔍 Quality Review
+For deployment updates:
 
-The Checker Agent evaluates the Worker Agent's deliverable against the original user request.
+1. Make changes to the project locally or in GitHub.
+2. Commit and push the changes to the connected repository.
+3. Check the Streamlit deployment logs if the application fails to update or encounters an error.
+4. Test the live application after deployment.
 
-The review uses the following statuses:
-
-- `COMPLETE` — All explicit requirements are satisfied.
-- `PARTIAL` — Some requirements remain unmet.
-- `NOT COMPLETE` — Important requirements have not been satisfied.
-
-The review may identify fulfilled requirements, verified gaps, and necessary next steps. As with any LLM-based system, the review is not guaranteed to be correct and should be checked when necessary.
-
-## 🔐 Environment Variables and Secrets
-
-| Secret | Purpose |
-|---|---|
-| `GROQ_API_KEY` | Authenticates requests to the Groq API. |
-| `GROQ_MODEL` | Specifies the language model used by the application. |
-
-Never share your API key with other people. If it is exposed publicly, revoke it and generate a replacement.
-
-## 🧰 Troubleshooting
-
-### 1. Groq API Authentication Error
-
-**Possible causes:**
-- The API key is missing or incorrect.
-- The secret name does not match the name expected by the application.
-- The API key is no longer valid.
-
-**What to check:** Verify `GROQ_API_KEY` in Streamlit Secrets and confirm that the key is valid.
-
-### 2. Model or API Request Error
-
-**Possible causes:**
-- The configured model is unavailable to the account.
-- The provider does not support a parameter sent by the installed integration.
-- Package versions are incompatible.
-
-**What to check:** Confirm the supported model name and inspect the full error message and installed package versions.
-
-### 3. `cache_breakpoint` Error
-
-If the Groq API returns an error mentioning an unsupported `cache_breakpoint` property, the issue may involve compatibility between CrewAI, LiteLLM, and the Groq API integration.
-
-**What to check:**
-- Review the installed versions of CrewAI and LiteLLM.
-- Check the current compatibility documentation for the installed versions.
-- Use a verified compatible dependency configuration or integration fix.
-- Redeploy and test the application after making changes.
-
-A compatibility workaround should not be considered successful until the application has been tested again.
-
-### 4. Application Does Not Start
-
-- Check the Streamlit deployment logs.
-- Confirm that `app.py` exists in the selected branch.
-- Confirm that `requirements.txt` includes the required dependencies.
-- Check for Python import errors and missing modules.
-
-## ⚠️ Current Limitations
-
-- **Session-based history:** Task history is temporary and may be lost when the application session resets.
-- **No persistent database:** Long-term storage of tasks and results is not implemented in the described workflow.
-- **No live progress tracking:** The application does not currently provide verified real-time progress updates for each agent.
-- **LLM-dependent results:** Output quality depends on the model, prompt instructions, and API availability.
-- **Sequential crew orchestration:** The current crew uses `Process.sequential`; the system is not a fully parallel execution pipeline.
-- **API dependency:** Task execution requires a working connection to the configured LLM provider.
+Configure all required secrets in the Streamlit application's settings rather than storing them in public source files.
 
 ## 🔮 Future Improvements
 
-Possible future enhancements include:
+Potential future enhancements include:
 
-- Persistent task history using a database.
-- Real-time agent status and progress indicators.
-- Retry logic and improved API error handling.
-- More reliable dependency version pinning.
-- Downloadable task reports.
-- User authentication and task-specific history.
-- Configurable agents and model selection.
-- Automated tests for task completion and review accuracy.
-- Performance monitoring and API usage tracking.
+- Improved parallel execution and agent coordination.
+- More detailed workflow progress indicators.
+- Better task-history storage and result retrieval.
+- Export options for generated reports.
+- Additional AI models and provider integrations.
+- More comprehensive error handling and logging.
+- Enhanced authentication and account management.
+- Subscription management and payment integration.
+- Automated testing and performance monitoring.
 
-These are potential improvements and are not claimed as completed features.
+## 📊 Project Status
 
-## 🎓 Learning Objectives
+Nexora AI is an ongoing multi-agent AI application. Its available features depend on the current codebase, API configuration, database setup, and deployment environment.
 
-This project demonstrates practical concepts in:
+The live application should be tested regularly to confirm that all pages and workflows are functioning correctly.
 
-- Multi-agent AI system design.
-- AI agent roles and task delegation.
-- CrewAI task orchestration.
-- LLM integration using an API.
-- Python application development.
-- Streamlit interface development.
-- Prompt engineering and output evaluation.
-- GitHub-based project management.
-- Cloud deployment and secrets management.
+---
 
-## 👩‍💻 Author
-
-**Hina Arshad**
-
-GitHub: [hinaarshad302](https://github.com/hinaarshad302/)
-
-## 📄 License
-
-No license has been specified here. Add a `LICENSE` file and update this section if you decide to distribute the project under an open-source license.
-
-## 🙌 Acknowledgements
-
-- [CrewAI](https://www.crewai.com/) — AI agent orchestration framework.
-- [Groq](https://groq.com/) — LLM inference platform.
-- [Streamlit](https://streamlit.io/) — Python application framework.
-- [GitHub](https://github.com/) — Source code hosting and version control.
+**Developed as a Python-based multi-agent AI project using CrewAI, Groq, Streamlit, and Supabase.**

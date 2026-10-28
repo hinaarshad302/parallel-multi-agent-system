@@ -663,20 +663,17 @@ def parse_saved_result(value: Any) -> Any:
     return value
 
 
+
 # --------------------------------------------------
-# 10. OVERVIEW
+# 10. WORKSPACE PAGES
 # --------------------------------------------------
 
 if page == "Overview":
-
     st.markdown(
         """
         <div class="hero">
             <h1>Welcome to Nexora AI</h1>
-            <p>
-                Plan, execute, verify, and deliver tasks
-                with a coordinated multi-agent workflow.
-            </p>
+            <p>Plan, execute, verify, and deliver tasks with AI agents.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -686,38 +683,24 @@ if page == "Overview":
 
     with col1:
         st.markdown(
-            """
-            <div class="panel">
-                <h3>🧠 Planning</h3>
-                <p>Break complex requests into clear steps.</p>
-            </div>
-            """,
+            '<div class="panel"><h3>🧠 Planning</h3>'
+            '<p>Break tasks into clear steps.</p></div>',
             unsafe_allow_html=True,
         )
 
     with col2:
         st.markdown(
-            """
-            <div class="panel">
-                <h3>⚙️ Execution</h3>
-                <p>Generate the requested deliverable.</p>
-            </div>
-            """,
+            '<div class="panel"><h3>⚙️ Execution</h3>'
+            '<p>Generate useful results.</p></div>',
             unsafe_allow_html=True,
         )
 
     with col3:
         st.markdown(
-            """
-            <div class="panel">
-                <h3>✅ Quality Review</h3>
-                <p>Review the output for completeness and quality.</p>
-            </div>
-            """,
+            '<div class="panel"><h3>✅ Quality Review</h3>'
+            '<p>Review results for quality.</p></div>',
             unsafe_allow_html=True,
         )
-
-    st.subheader("Your Workspace")
 
     try:
         records = load_task_history(limit=50)
@@ -726,102 +709,174 @@ if page == "Overview":
         logger.exception("Could not load task count.")
         total_tasks = 0
 
-    metric1, metric2 = st.columns(2)
-
-    with metric1:
-        st.metric("Recent Saved Tasks", total_tasks)
-
-    with metric2:
-        st.metric("AI Agents", 4)
+    col1, col2 = st.columns(2)
+    col1.metric("Recent Saved Tasks", total_tasks)
+    col2.metric("AI Agents", 4)
 
     if st.button("Start a New Task", type="primary"):
         st.session_state.workspace_page = "Run AI Task"
         st.rerun()
-
-
-# --------------------------------------------------
-
-    # ----------------------------------------------
-    # DISPLAY LATEST RESULT
-    # ----------------------------------------------
 
     latest = st.session_state.get("latest_task")
 
     if latest:
         st.divider()
         st.subheader("Latest Result")
-
-        st.markdown("**Task**")
         st.write(latest.get("task", "Task unavailable"))
-
-        st.caption(
-            f"Execution time: "
-            f"{latest.get('elapsed_seconds', 'N/A')} seconds"
-        )
 
         result = latest.get("result")
 
         if isinstance(result, dict):
             final_result = result.get("final_result")
 
-            if final_result and str(final_result).strip():
+            if final_result:
                 st.markdown("### Final Answer")
                 st.markdown(str(final_result))
             else:
-                st.warning(
-                    "No final answer was returned. "
-                    "Check the agent outputs below."
-                )
+                st.warning("No final answer was returned.")
 
-            review_result = result.get("review_result")
-
-            if review_result:
+            review = result.get("review_result")
+            if review:
                 with st.expander("Quality Review"):
-                    st.markdown(str(review_result))
+                    st.write(review)
 
-            search_results = result.get("search_results")
-
-            if search_results:
-                with st.expander("Search Evidence"):
-                    st.write(search_results)
-
-            agent_outputs = result.get("agent_outputs")
-
-            if agent_outputs:
+            outputs = result.get("agent_outputs")
+            if outputs:
                 with st.expander("Individual Agent Outputs"):
-                    for index, item in enumerate(
-                        agent_outputs, start=1
-                    ):
-                        if (
-                            isinstance(item, (list, tuple))
-                            and len(item) >= 2
-                        ):
-                            title, output = item[0], item[1]
-                        else:
-                            title = f"Agent {index}"
-                            output = item
+                    st.write(outputs)
 
-                        st.markdown(f"**{title}**")
-                        st.write(output or "No output available.")
+        elif result is not None:
+            st.write(result)
 
-            st.download_button(
-                "Download Full Result (JSON)",
-                data=json.dumps(
-                    result,
-                    ensure_ascii=False,
-                    indent=2,
-                    default=str,
-                ),
-                file_name="nexora_ai_result.json",
-                mime="application/json",
-            )
 
-        elif result is not None and str(result).strip():
-            st.markdown("### Final Answer")
-            st.markdown(str(result))
+elif page == "Run AI Task":
+    st.title("Run AI Task")
+    st.write("Enter a task for Nexora AI.")
 
+    task = st.text_area(
+        "Describe your task",
+        max_chars=MAX_TASK_LENGTH,
+        placeholder="Example: Explain AI in simple words.",
+        key="new_ai_task",
+    )
+
+    if st.button("Run AI Task", type="primary"):
+        if not task.strip():
+            st.warning("Please enter a task.")
         else:
-            st.error(
-                "The workflow returned an empty result. "
-                "Check the application logs and crew_runner.py."
-            )
+            try:
+                with st.spinner("AI agents are working..."):
+                    started = datetime.now(timezone.utc)
+                    result = run_task(task.strip())
+                    elapsed = (
+                        datetime.now(timezone.utc) - started
+                    ).total_seconds()
+
+                    st.session_state["latest_task"] = {
+                        "task": task.strip(),
+                        "result": result,
+                        "elapsed_seconds": round(elapsed, 2),
+                    }
+
+                    try:
+                        save_task_history(task.strip(), result)
+                        st.success("Task completed and saved.")
+                    except Exception:
+                        logger.exception("Could not save task.")
+                        st.warning(
+                            "Task completed, but saving failed. "
+                            "Check Supabase permissions and table columns."
+                        )
+
+                    st.rerun()
+
+            except Exception as exc:
+                logger.exception("AI task execution failed.")
+                st.error("The AI task failed. Please check the logs.")
+                st.caption(f"Error type: {type(exc).__name__}")
+
+    latest = st.session_state.get("latest_task")
+    if latest:
+        st.divider()
+        st.subheader("Latest Result")
+        st.write(latest.get("task", ""))
+
+        result = latest.get("result")
+        if isinstance(result, dict):
+            answer = result.get("final_result")
+            if answer:
+                st.markdown(answer)
+            else:
+                st.json(result)
+        elif result is not None:
+            st.write(result)
+
+
+elif page == "Task History":
+    st.title("Task History")
+
+    try:
+        records = load_task_history(limit=50)
+
+        if not records:
+            st.info("No saved tasks yet.")
+        else:
+            st.caption(f"{len(records)} recent task(s)")
+
+            for index, record in enumerate(records, start=1):
+                title = record.get("task") or f"Task {index}"
+
+                with st.expander(title):
+                    st.caption(
+                        f"Created: {record.get('created_at', 'Unknown')}"
+                    )
+
+                    saved_result = parse_saved_result(
+                        record.get("result")
+                    )
+
+                    if isinstance(saved_result, (dict, list)):
+                        st.json(saved_result)
+                    else:
+                        st.write(saved_result or "No result saved.")
+
+    except Exception:
+        logger.exception("Could not load task history.")
+        st.error(
+            "Could not load history. Check the task_history table "
+            "and its permissions in Supabase."
+        )
+
+
+elif page == "Subscription":
+    st.title("Subscription")
+    st.subheader("Free Plan")
+    st.write(f"Daily task limit: {FREE_DAILY_LIMIT} tasks")
+    st.info(
+        "Online payments are not activated yet. "
+        "Subscription purchases are currently unavailable."
+    )
+
+
+elif page == "Account":
+    st.title("Account")
+
+    st.text_input(
+        "Email address",
+        value=user_email,
+        disabled=True,
+    )
+
+    st.text_input(
+        "User ID",
+        value=user_id,
+        disabled=True,
+    )
+
+    st.divider()
+
+    if st.button("Sign Out", type="primary"):
+        logout_user()
+        st.rerun()
+
+    render_footer()

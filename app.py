@@ -743,6 +743,7 @@ if page == "Overview":
 # 11. RUN AI TASK
 # --------------------------------------------------
 
+
 elif page == "Run AI Task":
 
     st.markdown(
@@ -781,7 +782,6 @@ elif page == "Run AI Task":
         )
 
     if submitted:
-
         clean_task = user_task.strip()
 
         if not clean_task:
@@ -812,11 +812,26 @@ elif page == "Run AI Task":
                     "elapsed_seconds": elapsed,
                 }
 
-                st.success(f"Task completed in {elapsed} seconds.")
+                st.success(
+                    f"Task completed successfully in {elapsed} seconds."
+                )
+
+                st.subheader("AI Task Result")
+
+                if isinstance(result, (dict, list)):
+                    st.json(result)
+                elif result is None or not str(result).strip():
+                    st.warning(
+                        "The AI workflow returned an empty result. "
+                        "Check crew_runner.py and the agent output."
+                    )
+                else:
+                    st.markdown(str(result))
 
                 try:
                     save_task_history(clean_task, result)
                     st.toast("Task history saved.")
+
                 except Exception:
                     logger.exception("Task history save failed.")
                     st.warning(
@@ -827,26 +842,30 @@ elif page == "Run AI Task":
 
             except Exception as exc:
                 logger.exception("AI task failed.")
+
                 st.error(
                     "The task could not be completed. "
                     "Review the technical message below."
                 )
 
-                # Avoid displaying environment variables or secrets.
                 safe_message = str(exc)
+
                 for secret_name in (
                     "GROQ_API_KEY",
                     "SUPABASE_ANON_KEY",
                     "SUPABASE_SERVICE_ROLE_KEY",
                 ):
                     secret_value = get_setting(secret_name)
+
                     if secret_value:
                         safe_message = safe_message.replace(
                             secret_value,
                             "[REDACTED]",
                         )
 
-                st.code(safe_message)
+                st.code(
+                    f"{type(exc).__name__}: {safe_message}"
+                )
 
 
     # ----------------------------------------------

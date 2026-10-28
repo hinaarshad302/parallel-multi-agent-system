@@ -18,7 +18,6 @@
 
     if needs_search:
         logger.info("[DEBUG] Web search required")
-
         try:
             search_results = search_web(
                 "Research this task using reliable sources. "

@@ -740,133 +740,6 @@ if page == "Overview":
 
 
 # --------------------------------------------------
-# 11. RUN AI TASK
-# --------------------------------------------------
-
-
-elif page == "Run AI Task":
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Run an AI Task</h1>
-            <p>
-                Describe your goal. Nexora AI will process it
-                through the configured multi-agent workflow.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.info(
-        "The workflow uses Planner, Worker, Checker, and Final Reviewer. "
-        "Execution time depends on the task and API availability."
-    )
-
-    with st.form("nexora_task_form"):
-        user_task = st.text_area(
-            "Task description",
-            placeholder=(
-                "Example: Create a beginner-friendly Python roadmap "
-                "with weekly goals and practical projects."
-            ),
-            height=180,
-            max_chars=MAX_TASK_LENGTH,
-        )
-
-        submitted = st.form_submit_button(
-            "Run AI Agents",
-            type="primary",
-            use_container_width=True,
-        )
-
-    if submitted:
-        clean_task = user_task.strip()
-
-        if not clean_task:
-            st.warning("Enter a task description first.")
-
-        elif len(clean_task) > MAX_TASK_LENGTH:
-            st.warning(
-                f"Keep your task under {MAX_TASK_LENGTH} characters."
-            )
-
-        else:
-            import time
-
-            started_at = time.monotonic()
-
-            try:
-                with st.spinner(
-                    "The AI agents are processing your task. "
-                    "Please keep this page open."
-                ):
-                    result = run_task(clean_task)
-
-                elapsed = round(time.monotonic() - started_at, 1)
-
-                st.session_state["latest_task"] = {
-                    "task": clean_task,
-                    "result": result,
-                    "elapsed_seconds": elapsed,
-                }
-
-                st.success(
-                    f"Task completed successfully in {elapsed} seconds."
-                )
-
-                st.subheader("AI Task Result")
-
-                if isinstance(result, (dict, list)):
-                    st.json(result)
-                elif result is None or not str(result).strip():
-                    st.warning(
-                        "The AI workflow returned an empty result. "
-                        "Check crew_runner.py and the agent output."
-                    )
-                else:
-                    st.markdown(str(result))
-
-                try:
-                    save_task_history(clean_task, result)
-                    st.toast("Task history saved.")
-
-                except Exception:
-                    logger.exception("Task history save failed.")
-                    st.warning(
-                        "The task completed, but it could not be saved "
-                        "to history. Check the task_history table and "
-                        "its Row Level Security policies."
-                    )
-
-            except Exception as exc:
-                logger.exception("AI task failed.")
-
-                st.error(
-                    "The task could not be completed. "
-                    "Review the technical message below."
-                )
-
-                safe_message = str(exc)
-
-                for secret_name in (
-                    "GROQ_API_KEY",
-                    "SUPABASE_ANON_KEY",
-                    "SUPABASE_SERVICE_ROLE_KEY",
-                ):
-                    secret_value = get_setting(secret_name)
-
-                    if secret_value:
-                        safe_message = safe_message.replace(
-                            secret_value,
-                            "[REDACTED]",
-                        )
-
-                st.code(
-                    f"{type(exc).__name__}: {safe_message}"
-                )
-
 
     # ----------------------------------------------
     # DISPLAY LATEST RESULT
@@ -879,21 +752,26 @@ elif page == "Run AI Task":
         st.subheader("Latest Result")
 
         st.markdown("**Task**")
-        st.write(latest["task"])
+        st.write(latest.get("task", "Task unavailable"))
 
         st.caption(
-            f"Execution time: {latest.get('elapsed_seconds', 'N/A')} seconds"
+            f"Execution time: "
+            f"{latest.get('elapsed_seconds', 'N/A')} seconds"
         )
 
-        result = latest["result"]
+        result = latest.get("result")
 
         if isinstance(result, dict):
-
             final_result = result.get("final_result")
 
-            if final_result:
+            if final_result and str(final_result).strip():
                 st.markdown("### Final Answer")
                 st.markdown(str(final_result))
+            else:
+                st.warning(
+                    "No final answer was returned. "
+                    "Check the agent outputs below."
+                )
 
             review_result = result.get("review_result")
 
@@ -911,8 +789,9 @@ elif page == "Run AI Task":
 
             if agent_outputs:
                 with st.expander("Individual Agent Outputs"):
-                    for index, item in enumerate(agent_outputs, start=1):
-
+                    for index, item in enumerate(
+                        agent_outputs, start=1
+                    ):
                         if (
                             isinstance(item, (list, tuple))
                             and len(item) >= 2
@@ -937,288 +816,12 @@ elif page == "Run AI Task":
                 mime="application/json",
             )
 
-        else:
-            st.write(result)
-
-
-# --------------------------------------------------
-# 12. TASK HISTORY
-# --------------------------------------------------
-
-elif page == "Task History":
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Task History</h1>
-            <p>Review and download your previously saved tasks.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    try:
-        records = load_task_history(limit=50)
-
-        if not records:
-            st.info("No saved tasks found yet.")
+        elif result is not None and str(result).strip():
+            st.markdown("### Final Answer")
+            st.markdown(str(result))
 
         else:
-            st.caption(f"{len(records)} recent records")
-
-            for index, record in enumerate(records, start=1):
-
-                title = (record.get("task") or "Untitled task").strip()
-
-                with st.expander(f"{index}. {title[:100]}"):
-
-                    st.caption(
-                        f"Created: {record.get('created_at', 'Unknown')}"
-                    )
-
-                    saved_result = parse_saved_result(
-                        record.get("result", "")
-                    )
-
-                    if isinstance(saved_result, dict):
-
-                        final_result = saved_result.get("final_result")
-
-                        if final_result:
-                            st.markdown(str(final_result))
-                        else:
-                            st.json(saved_result)
-
-                    elif isinstance(saved_result, (list, tuple)):
-                        st.json(saved_result)
-
-                    else:
-                        st.write(saved_result)
-
-                    st.download_button(
-                        "Download Result",
-                        data=json.dumps(
-                            saved_result,
-                            ensure_ascii=False,
-                            indent=2,
-                            default=str,
-                        ),
-                        file_name=f"nexora_task_{index}.json",
-                        mime="application/json",
-                        key=f"history_download_{record.get('id', index)}",
-                    )
-
-    except Exception:
-        logger.exception("Task history loading failed.")
-        st.error(
-            "Task history could not be loaded. "
-            "Check the task_history table and access policies."
-        )
-
-
-# --------------------------------------------------
-# 13. ACCOUNT
-# --------------------------------------------------
-
-elif page == "Account":
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Account</h1>
-            <p>View your account details.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-
-    st.write("**Email address**")
-    st.write(user_email or "Not available")
-
-    st.write("**User ID**")
-    st.code(user_id)
-
-    st.write("**Authentication provider**")
-    st.write("Supabase")
-
-    st.markdown("</div>", unsafe_allow_html=True) 
-# --------------------------------------------------
-# 14. SUBSCRIPTION HELPERS
-# --------------------------------------------------
-
-def get_subscription() -> dict:
-    """
-    Read the latest subscription record for this user.
-    Expected columns: user_id, plan, status, expires_at.
-    """
-    try:
-        response = (
-            supabase.table(SUBSCRIPTIONS_TABLE)
-            .select("plan,status,expires_at")
-            .eq("user_id", user_id)
-            .order("expires_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-
-        records = response.data or []
-
-        if not records:
-            return {
-                "plan": "Free",
-                "status": "free",
-                "expires_at": None,
-            }
-
-        record = records[0]
-        status = str(record.get("status") or "").lower()
-        plan = str(record.get("plan") or "Free")
-        expires_at = record.get("expires_at")
-
-        active = status in {"active", "trialing"}
-
-        if expires_at:
-            try:
-                expiry = datetime.fromisoformat(
-                    str(expires_at).replace("Z", "+00:00")
-                )
-
-                if expiry.tzinfo is None:
-                    expiry = expiry.replace(tzinfo=timezone.utc)
-
-                if expiry <= datetime.now(timezone.utc):
-                    active = False
-
-            except (ValueError, TypeError):
-                active = False
-
-        if active:
-            return {
-                "plan": plan,
-                "status": "active",
-                "expires_at": expires_at,
-            }
-
-        return {
-            "plan": "Free",
-            "status": "free",
-            "expires_at": expires_at,
-        }
-
-    except Exception:
-        logger.exception("Subscription lookup failed.")
-
-        # Fail closed: do not grant paid access if verification fails.
-        return {
-            "plan": "Free",
-            "status": "unverified",
-            "expires_at": None,
-        }
-
-
-# --------------------------------------------------
-# 15. DAILY TASK COUNT
-# --------------------------------------------------
-
-def count_tasks_today() -> int:
-    """
-    Count this user's task records created since UTC midnight.
-    Assumes task_history has a created_at timestamp column.
-    """
-    now = datetime.now(timezone.utc)
-    midnight = now.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-
-    try:
-        response = (
-            supabase.table(TASKS_TABLE)
-            .select("id", count="exact")
-            .eq("user_id", user_id)
-            .gte("created_at", midnight.isoformat())
-            .execute()
-        )
-
-        return int(response.count or 0)
-
-    except Exception:
-        logger.exception("Daily task count failed.")
-        return -1
-
-
-# --------------------------------------------------
-# 16. SUBSCRIPTION PAGE
-# --------------------------------------------------
-
-if page == "Subscription":
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Subscription</h1>
-            <p>Review your current plan and available features.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    subscription = get_subscription()
-    plan = subscription["plan"]
-    status = subscription["status"]
-    expires_at = subscription.get("expires_at")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric("Current Plan", plan)
-
-    with col2:
-        st.metric("Subscription Status", status.title())
-
-    if expires_at:
-        st.write(f"**Expiration date:** {expires_at}")
-    else:
-        st.write("**Expiration date:** Not applicable")
-
-    st.divider()
-
-    st.subheader("Free Plan")
-    st.markdown(
-        """
-        - Up to 5 task submissions per day in this app.
-        - Access to the configured multi-agent workflow.
-        - Task history, subject to database availability.
-        """
-    )
-
-    st.subheader("Premium Plan")
-    st.markdown(
-        """
-        - Premium access requires a verified active subscription.
-        - Features and limits depend on your configured plan.
-        - Online payment is not currently connected.
-        """
-    )
-
-    if status == "unverified":
-        st.warning(
-            "Your subscription could not be verified. "
-            "Paid access is not granted until the database can be checked."
-        )
-
-    st.info(
-        "Payments are not activated yet. Do not enter payment details "
-        "in this app until an official payment provider is integrated."
-    )
-
-
-# --------------------------------------------------
-# 17. FINAL FOOTER
-# --------------------------------------------------
-
-render_footer() 
+            st.error(
+                "The workflow returned an empty result. "
+                "Check the application logs and crew_runner.py."
+            )

@@ -201,6 +201,7 @@ def render_footer() -> None:
         """,
         unsafe_allow_html=True,
     )   
+
 # --------------------------------------------------
 # 4. PROFESSIONAL NEXORA AI DESIGN
 # --------------------------------------------------
@@ -216,24 +217,50 @@ st.markdown(
         --nexora-border: #dbe7e9;
     }
 
+    /* Main application background */
     .stApp {
-        background: linear-gradient(135deg, #f8fcfc 0%, #edf7f7 100%);
+        background: linear-gradient(
+            135deg, #f8fcfc 0%, #edf7f7 100%
+        );
         color: var(--nexora-text);
     }
 
+    /* Sidebar design */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #071b22 0%, #10333a 100%);
+        background: linear-gradient(
+            180deg, #071b22 0%, #10333a 100%
+        );
     }
 
     [data-testid="stSidebar"] * {
         color: #f0fdfa;
     }
 
+    /* Sidebar open/close arrow visibility */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stSidebarCollapseButton"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        z-index: 999999 !important;
+    }
+
+    /* Keep sidebar controls clickable */
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"] button {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    /* Hero section */
     .hero {
         padding: 30px;
         border-radius: 20px;
         color: #ffffff;
-        background: linear-gradient(120deg, #071b22, #115e59, #0f766e);
+        background: linear-gradient(
+            120deg, #071b22, #115e59, #0f766e
+        );
         margin-bottom: 24px;
         border: 1px solid rgba(45, 212, 191, .25);
     }
@@ -250,6 +277,7 @@ st.markdown(
         font-size: 1rem;
     }
 
+    /* Content panels */
     .panel {
         background: #ffffff;
         border: 1px solid var(--nexora-border);
@@ -259,6 +287,7 @@ st.markdown(
         box-shadow: 0 5px 18px rgba(7, 27, 34, .05);
     }
 
+    /* Brand */
     .brand {
         font-size: 1.65rem;
         font-weight: 800;
@@ -266,6 +295,7 @@ st.markdown(
         letter-spacing: -.5px;
     }
 
+    /* Footer */
     .app-footer {
         margin-top: 40px;
         padding: 24px 12px;
@@ -287,6 +317,7 @@ st.markdown(
         margin-top: 5px;
     }
 
+    /* Buttons */
     div.stButton > button,
     div.stFormSubmitButton > button {
         border-radius: 10px;
@@ -307,10 +338,12 @@ st.markdown(
         border-color: #115e59;
     }
 
+    /* Headings */
     h1, h2, h3 {
         letter-spacing: -.4px;
     }
 
+    /* Metric cards */
     [data-testid="stMetric"] {
         background: #ffffff;
         padding: 16px;
@@ -318,6 +351,7 @@ st.markdown(
         border: 1px solid #dbe7e9;
     }
 
+    /* Mobile responsive design */
     @media (max-width: 700px) {
         .hero {
             padding: 20px;
@@ -331,6 +365,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 
 
 # --------------------------------------------------

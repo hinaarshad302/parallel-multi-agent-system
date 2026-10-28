@@ -13,23 +13,31 @@ def _get_secret(name: str) -> str:
     except Exception:
         value = ""
 
-    return value or os.getenv(name, "")
+    return str(value or os.getenv(name, "")).strip()
+
+
+def _error(message: str) -> str:
+    return json.dumps(
+        {
+            "status": "ERROR",
+            "search_response": "",
+            "executed_tools": [],
+            "error": message,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 def search_web(query: str) -> str:
-    """Search with Groq Browser Search and return evidence as JSON text."""
+    """Search using Groq Browser Search and return evidence as JSON."""
 
     api_key = _get_secret("GROQ_API_KEY")
 
     if not api_key:
-        return json.dumps({
-            "status": "ERROR",
-            "search_response": "",
-            "executed_tools": [],
-            "error": "GROQ_API_KEY is missing.",
-        }, ensure_ascii=False, indent=2)
+        return _error("GROQ_API_KEY is missing.")
 
-    model = _get_secret("GROQ_MODEL") or "openai/gpt-oss-120b"
+    model = _get_secret("GROQ_MODEL") or "openai/gpt-oss-20b"
     url = "https://api.groq.com/openai/v1/chat/completions"
 
     payload = {
@@ -38,17 +46,18 @@ def search_web(query: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "Research the user's task using browser search. Prefer "
-                    "official and primary sources. Return source titles, URLs, "
-                    "relevant evidence, and the claims each source supports. "
-                    "Never invent sources or say you verified something unless "
-                    "the returned evidence supports that statement. Clearly "
-                    "label claims that could not be verified."
+                    "Research the user's task using browser search. "
+                    "Prefer official and primary sources. Return source "
+                    "titles, URLs, relevant evidence, and the claims each "
+                    "source supports. Never invent sources or claim "
+                    "verification without supporting evidence. Clearly "
+                    "label unverified claims."
                 ),
             },
             {"role": "user", "content": query},
         ],
         "tools": [{"type": "browser_search"}],
+        "max_tokens": 2048,
     }
 
     try:
@@ -59,56 +68,45 @@ def search_web(query: str) -> str:
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=60,
+            timeout=45,
         )
 
+        if response.status_code == 429:
+            return _error(
+                "Groq API quota/rate limit reached. Web search is "
+                "temporarily unavailable. Try after the limit resets."
+            )
+
         if not response.ok:
-            return json.dumps({
-                "status": "ERROR",
-                "search_response": "",
-                "executed_tools": [],
-                "error": (
-                    f"Groq returned HTTP {response.status_code}: "
-                    f"{response.text[:400]}"
-                ),
-            }, ensure_ascii=False, indent=2)
+            return _error(
+                f"Groq Browser Search returned HTTP {response.status_code}: "
+                f"{response.text[:300]}"
+            )
 
         data = response.json()
         choices = data.get("choices", [])
 
         if not choices:
-            return json.dumps({
-                "status": "ERROR",
-                "search_response": "",
-                "executed_tools": [],
-                "error": "Groq returned no choices in its response.",
-            }, ensure_ascii=False, indent=2)
+            return _error("Groq returned no choices.")
 
         message = choices[0].get("message", {})
+        content = message.get("content") or ""
 
-        content = message.get("content", "")
-        if not content:
-            content = "No textual search evidence was returned."
-
-        result = {
-            "status": "SUCCESS",
-            "model": model,
-            "search_response": content,
-            "executed_tools": message.get("executed_tools", []),
-        }
-
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return json.dumps(
+            {
+                "status": "SUCCESS" if content else "ERROR",
+                "model": model,
+                "search_response": content,
+                "executed_tools": message.get("executed_tools", []),
+                "error": "" if content else "No textual search evidence returned.",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
 
     except requests.Timeout:
-        error = "Groq Browser Search timed out."
+        return _error("Groq Browser Search timed out.")
     except requests.RequestException as exc:
-        error = f"Network request failed: {type(exc).__name__}"
+        return _error(f"Network request failed: {type(exc).__name__}")
     except (ValueError, KeyError, IndexError, TypeError) as exc:
-        error = f"Unexpected Groq response: {type(exc).__name__}"
-
-    return json.dumps({
-        "status": "ERROR",
-        "search_response": "",
-        "executed_tools": [],
-        "error": error,
-    }, ensure_ascii=False, indent=2)
+        return _error(f"Unexpected Groq response: {type(exc).__name__}")

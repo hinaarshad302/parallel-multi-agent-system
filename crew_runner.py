@@ -129,14 +129,14 @@ def run_user_task(user_task: str) -> dict:
             except (ValueError, TypeError):
                 parsed = {
                     "status": "UNKNOWN",
-                    "search_response": str(raw_search_results)[:6000],
+                    "search_response": str(raw_search_results)[:2500]
                 }
 
             # Keep the context short to reduce tokens.
             search_results = json.dumps(
                 parsed,
                 ensure_ascii=False,
-            )[:6000]
+           )[:2500]
 
         except Exception as exc:
             logger.exception("Web search failed")
@@ -234,7 +234,7 @@ def run_user_task(user_task: str) -> dict:
         ),
         expected_output="The final requested deliverable.",
         agent=final_reviewer,
-        context=[plan_task, work_task, check_task],
+       context=[work_task, check_task]
         async_execution=False,
     )
 

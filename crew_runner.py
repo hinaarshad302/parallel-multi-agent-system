@@ -2,6 +2,13 @@
 # crew_runner.py
 # CrewAI + Groq Browser Search + Streamlit
 
+import time
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 def _disable_cache_breakpoint():
     """Compatibility workaround for supported CrewAI versions."""
 
@@ -67,22 +74,47 @@ def run_user_task(user_task: str) -> dict:
     if not isinstance(user_task, str) or not user_task.strip():
         raise ValueError("Please enter a task before running the agents.")
 
+    started = time.time()
     user_task = user_task.strip()
-    llm = get_llm()
 
-    # Search evidence is collected once and shared with relevant agents.
-    search_results = search_web(
-        "Research this task using reliable web sources. Prefer official "
-        "and primary sources. Return source titles, URLs, relevant evidence, "
-        "and explain which claims each source supports. Do not invent sources. "
-        "Clearly disclose anything that could not be verified.\n\n"
-        f"USER TASK:\n{user_task}"
+    logger.info("[DEBUG] Starting get_llm()")
+    llm = get_llm()
+    logger.info(
+        "[DEBUG] get_llm completed in %.1f seconds",
+        time.time() - started,
     )
 
+    # Search evidence is collected once and shared with relevant agents.
+    logger.info("[DEBUG] Starting web search")
+    search_started = time.time()
+
+    try:
+        search_results = search_web(
+            "Research this task using reliable web sources. Prefer official "
+            "and primary sources. Return source titles, URLs, relevant evidence, "
+            "and explain which claims each source supports. Do not invent sources. "
+            "Clearly disclose anything that could not be verified.\n\n"
+            f"USER TASK:\n{user_task}"
+        )
+    except Exception:
+        logger.exception("[DEBUG] Web search failed")
+        search_results = (
+            '{"status":"ERROR","search_response":"",'
+            '"error":"Web search failed. See application logs."}'
+        )
+
+    logger.info(
+        "[DEBUG] Web search returned in %.1f seconds",
+        time.time() - search_started,
+    )
+
+    # Create agents.
+    logger.info("[DEBUG] Creating agents")
     planner = create_planner_agent(llm)
     worker = create_worker_agent(llm)
     checker = create_checker_agent(llm)
     final_reviewer = create_final_reviewer_agent(llm)
+    logger.info("[DEBUG] Agents created")
 
     # Task 1: Planner
     plan_task = Task(
@@ -147,8 +179,6 @@ def run_user_task(user_task: str) -> dict:
     )
 
     # Task 4: Final Reviewer
-    # IMPORTANT: Do not interpolate task outputs here. This description is
-    # created before kickoff; prior outputs are supplied through context.
     final_task = Task(
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
@@ -158,16 +188,15 @@ def run_user_task(user_task: str) -> dict:
             "task context.\n\n"
             "MANDATORY RULES:\n"
             "1. Read the Checker's STATUS, GAPS, and NEXT STEPS.\n"
-            "2. Do not repeat the worker's answer unchanged if the Checker "
-            "identifies an important issue.\n"
-            "3. Correct a claim only when the supplied evidence supports "
-            "the correction. Otherwise disclose uncertainty.\n"
-            "4. Label unsupported or insufficiently evidenced factual claims "
-            "UNVERIFIED, or remove them if they are not needed.\n"
+            "2. Correct important issues identified by the Checker.\n"
+            "3. Correct a claim only when supplied evidence supports the "
+            "correction. Otherwise disclose uncertainty.\n"
+            "4. Label unsupported factual claims UNVERIFIED, or remove them "
+            "if they are not needed.\n"
             "5. Do not describe a source as verified merely because a URL or "
             "title exists. Never invent sources or verification results.\n"
             "6. Respect the user's requested language, format, and scope.\n"
-            "7. Return the deliverable itself, not an internal review report.\n"
+            "7. Return the deliverable itself, not an internal review report."
         ),
         expected_output=(
             "The requested final deliverable, with checker issues addressed "
@@ -182,10 +211,23 @@ def run_user_task(user_task: str) -> dict:
         agents=[planner, worker, checker, final_reviewer],
         tasks=[plan_task, work_task, check_task, final_task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
-    crew.kickoff()
+    logger.info("[DEBUG] Starting crew.kickoff()")
+
+    try:
+        crew.kickoff()
+    except Exception as exc:
+        logger.exception("[DEBUG] Crew execution failed")
+        raise RuntimeError(
+            f"AI agents failed: {type(exc).__name__}: {str(exc)[:300]}"
+        ) from exc
+
+    logger.info(
+        "[DEBUG] crew.kickoff() finished in %.1f seconds",
+        time.time() - started,
+    )
 
     final_output = _output(final_task)
     review_output = _output(check_task)
@@ -199,8 +241,8 @@ def run_user_task(user_task: str) -> dict:
 
     if not final_output.strip():
         raise RuntimeError(
-            "The workflow finished without a final answer. "
-            "Check the Streamlit Cloud logs for technical details."
+            "Workflow finished without a final answer. "
+            "Check Streamlit Cloud logs for technical details."
         )
 
     return {

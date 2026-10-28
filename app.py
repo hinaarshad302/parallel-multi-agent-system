@@ -749,134 +749,296 @@ if page == "Overview":
             st.write(result)
 
 
-elif page == "Run AI Task":
-    st.title("Run AI Task")
-    st.write("Enter a task for Nexora AI.")
 
-    task = st.text_area(
-        "Describe your task",
-        max_chars=MAX_TASK_LENGTH,
-        placeholder="Example: Explain AI in simple words.",
-        key="new_ai_task",
+elif page == "Run AI Task":
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>🚀 AI Task Studio</h1>
+            <p>Transform your ideas into results with Nexora AI.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    if st.button("Run AI Task", type="primary"):
+    st.markdown("### Create Your Task")
+    st.caption("Choose an example or describe what you want your AI team to do.")
+
+    examples = {
+        "🔎 Research": (
+            "Research the benefits and challenges of artificial intelligence. "
+            "Provide clear headings and practical examples."
+        ),
+        "💻 Coding": (
+            "Create a Python to-do list application. Explain the code "
+            "and include error handling."
+        ),
+        "✍️ Writing": (
+            "Write a professional blog post about AI in education "
+            "with an introduction, key points, and conclusion."
+        ),
+    }
+
+    example_cols = st.columns(3)
+    for col, (label, example_text) in zip(example_cols, examples.items()):
+        with col:
+            if st.button(label, use_container_width=True):
+                st.session_state["task_example"] = example_text
+
+    with st.container(border=True):
+        st.markdown("#### 📝 Task Details")
+        with st.form("nexora_professional_task_form"):
+            task = st.text_area(
+                "Describe your task",
+                value=st.session_state.get("task_example", ""),
+                placeholder="Describe your goal, requirements, and expected result...",
+                max_chars=MAX_TASK_LENGTH,
+                height=180,
+                key="professional_task_input",
+            )
+            st.caption(f"Maximum {MAX_TASK_LENGTH} characters")
+
+            run_clicked = st.form_submit_button(
+                "🚀 Run AI Workflow",
+                type="primary",
+                use_container_width=True,
+            )
+
+    if run_clicked:
         if not task.strip():
-            st.warning("Please enter a task.")
+            st.warning("Please enter a task first.")
+        elif len(task.strip()) < 10:
+            st.warning("Please provide more details about your task.")
         else:
             try:
-                with st.spinner("AI agents are working..."):
+                with st.status(
+                    "Nexora AI is processing your task...",
+                    expanded=True,
+                ) as status:
+                    st.write("Preparing your multi-agent workflow...")
+
                     started = datetime.now(timezone.utc)
                     result = run_task(task.strip())
                     elapsed = (
                         datetime.now(timezone.utc) - started
                     ).total_seconds()
 
-                    st.session_state["latest_task"] = {
+                    latest = {
                         "task": task.strip(),
                         "result": result,
                         "elapsed_seconds": round(elapsed, 2),
                     }
+                    st.session_state["latest_task"] = latest
 
                     try:
                         save_task_history(task.strip(), result)
-                        st.success("Task completed and saved.")
-                    except Exception:
-                        logger.exception("Could not save task.")
-                        st.warning(
-                            "Task completed, but saving failed. "
-                            "Check Supabase permissions and table columns."
+                        status.update(
+                            label="Task completed successfully!",
+                            state="complete",
+                            expanded=False,
                         )
+                    except Exception:
+                        logger.exception("Could not save task history.")
+                        status.update(
+                            label="Task completed; history save failed.",
+                            state="error",
+                            expanded=True,
+                        )
+                        st.warning("The result could not be saved to history.")
 
-                    st.rerun()
+                st.rerun()
 
             except Exception as exc:
-                logger.exception("AI task execution failed.")
-                st.error("The AI task failed. Please check the logs.")
+                logger.exception("AI workflow failed.")
+                st.error("The AI workflow could not be completed.")
                 st.caption(f"Error type: {type(exc).__name__}")
 
     latest = st.session_state.get("latest_task")
     if latest:
         st.divider()
-        st.subheader("Latest Result")
+        st.markdown("### 📊 Latest Task Result")
         st.write(latest.get("task", ""))
+
+        elapsed = latest.get("elapsed_seconds")
+        if elapsed is not None:
+            st.metric("Execution Time", f"{elapsed:.2f} seconds")
 
         result = latest.get("result")
         if isinstance(result, dict):
             answer = result.get("final_result")
             if answer:
-                st.markdown(answer)
+                st.markdown("#### 🎯 Final Answer")
+                st.markdown(str(answer))
             else:
-                st.json(result)
+                st.warning("No final answer was returned.")
+                with st.expander("View complete result"):
+                    st.json(result)
+
+            review = result.get("review_result")
+            if review:
+                with st.expander("✅ Quality Review"):
+                    st.write(review)
+
+            outputs = result.get("agent_outputs")
+            if outputs:
+                with st.expander("🤖 Individual Agent Outputs"):
+                    for index, item in enumerate(outputs, start=1):
+                        if isinstance(item, (list, tuple)) and len(item) >= 2:
+                            title, output = item[0], item[1]
+                        else:
+                            title, output = f"Agent {index}", item
+                        st.markdown(f"**{title}**")
+                        st.write(output or "No output available.")
+
+            search_results = result.get("search_results")
+            if search_results:
+                with st.expander("🔎 Search Evidence"):
+                    st.write(search_results)
+
+            st.download_button(
+                "⬇️ Download Result (JSON)",
+                data=json.dumps(
+                    result,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                ),
+                file_name="nexora_ai_result.json",
+                mime="application/json",
+                use_container_width=True,
+            )
         elif result is not None:
+            st.markdown("#### 🎯 Final Answer")
             st.write(result)
 
 
 elif page == "Task History":
-    st.title("Task History")
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>📚 Task History</h1>
+            <p>Review your previous AI tasks and their results.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         records = load_task_history(limit=50)
 
         if not records:
-            st.info("No saved tasks yet.")
+            st.info("No saved tasks yet. Run your first AI task to get started.")
         else:
-            st.caption(f"{len(records)} recent task(s)")
+            st.metric("Saved Tasks", len(records))
 
-            for index, record in enumerate(records, start=1):
-                title = record.get("task") or f"Task {index}"
+            search = st.text_input(
+                "🔎 Search tasks",
+                placeholder="Search by task description...",
+            )
 
-                with st.expander(title):
-                    st.caption(
-                        f"Created: {record.get('created_at', 'Unknown')}"
-                    )
+            filtered_records = [
+                record for record in records
+                if search.strip().lower()
+                in str(record.get("task", "")).lower()
+            ]
 
-                    saved_result = parse_saved_result(
-                        record.get("result")
-                    )
+            if not filtered_records:
+                st.warning("No tasks match your search.")
+            else:
+                for index, record in enumerate(filtered_records, start=1):
+                    title = record.get("task") or f"Task {index}"
 
-                    if isinstance(saved_result, (dict, list)):
-                        st.json(saved_result)
-                    else:
-                        st.write(saved_result or "No result saved.")
+                    with st.expander(f"📄 {title}"):
+                        st.caption(
+                            f"Created: {record.get('created_at', 'Unknown')}"
+                        )
+                        saved_result = parse_saved_result(
+                            record.get("result")
+                        )
+
+                        if isinstance(saved_result, (dict, list)):
+                            answer = (
+                                saved_result.get("final_result")
+                                if isinstance(saved_result, dict)
+                                else None
+                            )
+                            if answer:
+                                st.markdown("#### Final Answer")
+                                st.markdown(str(answer))
+                            else:
+                                st.json(saved_result)
+                        else:
+                            st.write(saved_result or "No result saved.")
 
     except Exception:
         logger.exception("Could not load task history.")
-        st.error(
-            "Could not load history. Check the task_history table "
-            "and its permissions in Supabase."
-        )
+        st.error("Unable to load task history. Check your Supabase settings.")
 
 
 elif page == "Subscription":
-    st.title("Subscription")
-    st.subheader("Free Plan")
-    st.write(f"Daily task limit: {FREE_DAILY_LIMIT} tasks")
-    st.info(
-        "Online payments are not activated yet. "
-        "Subscription purchases are currently unavailable."
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>💎 Subscription Plans</h1>
+            <p>Explore your current access to Nexora AI.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    with st.container(border=True):
+        st.markdown("### Free Plan")
+        st.markdown("## $0 <small>/ month</small>", unsafe_allow_html=True)
+        st.write("Suitable for exploring the Nexora AI workspace.")
+
+        st.divider()
+        st.write(f"✓ Up to {FREE_DAILY_LIMIT} tasks per day (displayed limit)")
+        st.write("✓ Access to the AI task workspace")
+        st.write("✓ View saved task history")
+        st.write("✓ Multi-agent workflow, subject to API availability")
+
+        st.info(
+            "Online payments are not activated yet. "
+            "Purchasing or upgrading a subscription is unavailable."
+        )
 
 
 elif page == "Account":
-    st.title("Account")
-
-    st.text_input(
-        "Email address",
-        value=user_email,
-        disabled=True,
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>👤 Account Settings</h1>
+            <p>View your Nexora AI account information.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.text_input(
-        "User ID",
-        value=user_id,
-        disabled=True,
-    )
+    with st.container(border=True):
+        st.markdown("### Profile Information")
 
-    st.divider()
+        st.text_input(
+            "Email Address",
+            value=user_email,
+            disabled=True,
+            key="account_email_display",
+        )
 
-    if st.button("Sign Out", type="primary"):
-        logout_user()
-        st.rerun()
+        st.text_input(
+            "User ID",
+            value=user_id,
+            disabled=True,
+            key="account_user_id_display",
+        )
+
+        st.caption("Your account details are read-only on this page.")
+
+    with st.container(border=True):
+        st.markdown("### 🔐 Account Security")
+        st.write("Sign out when you have finished using this device.")
+
+        if st.button("Sign Out", type="primary", use_container_width=True):
+            logout_user()
+            st.rerun()
 
     render_footer()

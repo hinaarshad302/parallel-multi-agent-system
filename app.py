@@ -1,3 +1,4 @@
+
 """
 Nexora AI
 Parallel Multi-Agent AI System
@@ -7,6 +8,7 @@ Online payments are not activated.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -25,7 +27,7 @@ from crew_runner import run_user_task as run_task
 
 st.set_page_config(
     page_title="Nexora AI | Multi-Agent AI System",
-    page_icon="🧠",
+    page_icon="🌐",
     layout="wide",
 )
 

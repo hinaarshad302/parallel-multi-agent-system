@@ -1,4 +1,3 @@
-
 # crew_runner.py
 # Nexora AI - Five-Agent Hybrid Multi-Agent System
 # Planner -> Worker + Research (Parallel) -> Checker -> Final Reviewer
@@ -21,12 +20,15 @@ from agents.final_reviewer_agent import create_final_reviewer_agent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crew_runner")
+
+
 # Groq compatibility fix
 try:
     import crewai.llms.cache as crew_cache
     crew_cache.mark_cache_breakpoint = lambda msg: msg
 except Exception:
     logging.exception("Could not apply Groq compatibility patch")
+
 
 MAX_USER_TASK_CHARS = 4000
 MAX_SEARCH_CHARS = 1500
@@ -51,7 +53,7 @@ def _output(task):
         return ""
 
 
-ddef _needs_web_search(user_task):
+def _needs_web_search(user_task):
     """Check whether the task needs current or reliable web research."""
 
     keywords = (
@@ -84,6 +86,7 @@ ddef _needs_web_search(user_task):
     task_lower = user_task.lower()
 
     return any(word in task_lower for word in keywords)
+
 
 def _get_search_results(user_task):
     """Fetch relevant search evidence when needed."""
@@ -253,7 +256,7 @@ def run_user_task(user_task: str) -> dict:
     )
 
     # STEP 7: Final Reviewer receives all previous outputs.
-       final_task = Task(
+    final_task = Task(
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
             "Read all previous agent outputs carefully. "
@@ -265,7 +268,7 @@ def run_user_task(user_task: str) -> dict:
             "Clearly mention that external sources were not verified. "
             "Keep the answer clear and follow the user's requested format."
         ),
-     expected_output="The final reviewed user-facing deliverable.",
+        expected_output="The final reviewed user-facing deliverable.",
         agent=final_reviewer,
         context=[
             plan_task,

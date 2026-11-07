@@ -420,24 +420,37 @@ def logout_user() -> None:
     clear_session()
 
 
-def show_auth_error(exc: Exception, action: str) -> None:
-    """Show helpful messages without exposing secrets."""
-    logger.warning("%s failed: %s", action, type(exc).__name__)
 
-    message = str(exc).lower()
+def show_auth_error(exc: Exception, action: str) -> None:
+    """Show useful authentication errors without exposing credentials."""
+
+    error_text = str(exc)
+
+    logger.error(
+        "%s failed | exception=%s | detail=%s",
+        action,
+        type(exc).__name__,
+        error_text[:300],
+    )
+
+    message = error_text.lower()
 
     if "invalid login credentials" in message:
         st.error("Invalid email or password. Please try again.")
+
     elif "email not confirmed" in message:
-        st.error("Please confirm your email address before signing in.")
+        st.error("Please confirm your email before signing in.")
+
     elif "already registered" in message or "user already registered" in message:
-        st.error("An account with this email may already exist.")
+        st.error("This email is already registered. Please sign in.")
+
     elif "rate limit" in message or "429" in message:
         st.error("Too many requests. Please wait before trying again.")
+
     else:
         st.error(
-            f"{action} could not be completed. "
-            "Check your connection and Supabase configuration."
+            f"{action} failed. Error type: {type(exc).__name__}. "
+            "Please check Streamlit Cloud Logs for details."
         )
 
 

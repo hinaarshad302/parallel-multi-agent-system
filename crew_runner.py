@@ -1,7 +1,7 @@
 
 # crew_runner.py
-# Nexora AI - Four-Agent Parallel Multi-Agent System
-# Planner -> Worker -> Checker -> Final Reviewer
+# Nexora AI - Five-Agent Hybrid Multi-Agent System
+# Planner -> Worker + Research (Parallel) -> Checker -> Final Reviewer
 
 import json
 import logging
@@ -14,6 +14,7 @@ from groq_search import search_web
 
 from agents.planner_agent import create_planner_agent
 from agents.worker_agent import create_worker_agent
+from agents.research_agent import create_research_agent
 from agents.checker_agent import create_checker_agent
 from agents.final_reviewer_agent import create_final_reviewer_agent
 
@@ -21,7 +22,6 @@ from agents.final_reviewer_agent import create_final_reviewer_agent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crew_runner")
 
-# Input and context limits to help control token usage.
 MAX_USER_TASK_CHARS = 4000
 MAX_SEARCH_CHARS = 1500
 MAX_OUTPUT_CHARS = 6000
@@ -36,16 +36,18 @@ def _output(task):
             return ""
 
         raw = getattr(output, "raw", None)
-        text = str(raw if raw is not None else output)
+        result = str(raw if raw is not None else output)
 
-        return text[:MAX_OUTPUT_CHARS]
+        return result[:MAX_OUTPUT_CHARS]
+
     except Exception:
         logger.exception("Could not extract task output")
         return ""
 
 
 def _needs_web_search(user_task):
-    """Determine whether the task likely needs current web evidence."""
+    """Check whether the task needs current web research."""
+
     keywords = (
         "latest",
         "current",
@@ -65,50 +67,52 @@ def _needs_web_search(user_task):
     )
 
     task_lower = user_task.lower()
+
     return any(word in task_lower for word in keywords)
 
 
 def _get_search_results(user_task):
-    """Fetch and limit search evidence before passing it to agents."""
+    """Fetch relevant search evidence when needed."""
+
     if not _needs_web_search(user_task):
         return (
-            "Web search was not performed. "
+            "Web search was not performed for this task. "
             "Do not claim that external sources were verified."
         )
 
     try:
         query = (
-            "Find concise, relevant evidence for this task. "
+            "Find concise and relevant evidence for this task. "
             "Prefer official and primary sources. Return source URLs. "
-            "Do not invent citations or sources.\n\n"
+            "Never invent citations or sources.\n\n"
             f"USER TASK:\n{user_task[:2000]}"
         )
 
         raw_results = search_web(query)
 
         if isinstance(raw_results, (dict, list)):
-            text = json.dumps(
+            result_text = json.dumps(
                 raw_results,
                 ensure_ascii=False,
                 default=str,
             )
         else:
-            text = str(raw_results)
+            result_text = str(raw_results)
 
-        # Limit evidence sent to the LLM.
-        return text[:MAX_SEARCH_CHARS]
+        return result_text[:MAX_SEARCH_CHARS]
 
     except Exception as exc:
         logger.exception("Web search failed")
+
         return (
-            "Web search unavailable. "
+            "Web search was unavailable. "
             f"Error type: {type(exc).__name__}. "
             "Do not invent sources or claim verification."
         )
 
 
 def run_user_task(user_task: str) -> dict:
-    """Execute the four-agent workflow and return the final result."""
+    """Run the five-agent hybrid workflow."""
 
     if not isinstance(user_task, str) or not user_task.strip():
         raise ValueError("Please enter a task before running the agents.")
@@ -123,120 +127,171 @@ def run_user_task(user_task: str) -> dict:
 
     started = time.time()
 
-    # Step 1: Initialize the model.
+    # STEP 1: Initialize language model
     logger.info("Initializing language model")
 
     try:
         llm = get_llm()
+
     except Exception as exc:
         logger.exception("LLM initialization failed")
+
         raise RuntimeError(
-            "LLM setup failed. Check llm_config.py and your API key. "
+            "LLM setup failed. Check llm_config.py and GROQ_API_KEY. "
             f"Details: {type(exc).__name__}: {str(exc)[:200]}"
         ) from exc
 
-    # Step 2: Gather limited search evidence.
+    # STEP 2: Collect research evidence
+    logger.info("Collecting research evidence")
+
     search_results = _get_search_results(user_task)
 
-    # Step 3: Create all four agents.
-    logger.info("Creating four agents")
+    # STEP 3: Create five agents
+    logger.info("Creating five agents")
 
     try:
         planner = create_planner_agent(llm)
         worker = create_worker_agent(llm)
+        researcher = create_research_agent(llm)
         checker = create_checker_agent(llm)
         final_reviewer = create_final_reviewer_agent(llm)
+
     except Exception as exc:
         logger.exception("Agent creation failed")
+
         raise RuntimeError(
             f"Agent setup failed: {type(exc).__name__}: {str(exc)[:200]}"
         ) from exc
 
-    # Task 1: Planner.
+    # STEP 4: Planner task
     plan_task = Task(
         description=(
             f"USER REQUEST:\n{user_task}\n\n"
-            "Create a short plan with the deliverable, format, language, "
-            "requirements and completion criteria. "
-            "Use no more than 8 concise bullet points. "
-            "Do not create the final deliverable."
+            "Understand the user's requirements and prepare a clear plan. "
+            "Identify the expected deliverable, format, language and "
+            "completion criteria. Use no more than 8 bullet points. "
+            "Do not produce the final answer."
         ),
-        expected_output="A concise plan of no more than 8 bullet points.",
+        expected_output="A concise task plan with completion criteria.",
         agent=planner,
         async_execution=False,
     )
 
-    # Task 2: Worker.
+    # STEP 5A: Worker task
+    # This task runs asynchronously.
     work_task = Task(
         description=(
             f"USER REQUEST:\n{user_task}\n\n"
-            f"SEARCH EVIDENCE (may be incomplete):\n{search_results}\n\n"
-            "Follow the Planner's plan in your task context. "
-            "Produce the requested deliverable directly. "
-            "Follow the user's language and format. "
-            "Do not invent facts, citations or URLs. "
-            "Keep the response focused and avoid repeating the request."
+            "Follow the Planner's task plan in your context. "
+            "Create the requested deliverable directly. "
+            "Follow the user's requested language and format. "
+            "Do not invent facts, sources or URLs. "
+            "Keep the output clear and useful."
         ),
-        expected_output="The requested deliverable, clearly formatted.",
+        expected_output="The requested deliverable.",
         agent=worker,
         context=[plan_task],
-        async_execution=False,
+        async_execution=True,
     )
 
-    # Task 3: Checker.
-    check_task = Task(
+    # STEP 5B: Research task
+    # This runs in parallel with the Worker task.
+    research_task = Task(
         description=(
             f"USER REQUEST:\n{user_task}\n\n"
-            "Review the Worker's deliverable in your task context. "
-            "Check whether it follows the request, format and language. "
-            "Identify important omissions, unsupported claims and errors. "
-            "Do not rewrite the complete deliverable.\n\n"
-            "Return a concise report in this format:\n"
+            f"AVAILABLE RESEARCH EVIDENCE:\n{search_results}\n\n"
+            "Follow the Planner's task plan. Analyze the available "
+            "evidence relevant to the user's request. "
+            "Identify supported facts, source titles and URLs when "
+            "available. Explain evidence limitations. "
+            "Never invent sources, statistics or citations. "
+            "If no external research was performed, clearly state that. "
+            "Keep your report concise."
+        ),
+        expected_output=(
+            "A concise research report containing relevant evidence, "
+            "sources and limitations."
+        ),
+        agent=researcher,
+        context=[plan_task],
+        async_execution=True,
+    )
+
+    # STEP 6: Checker waits for both parallel tasks.
+    check_task = Task(
+        description=(
+            f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
+            "Review the Worker's deliverable and Researcher's report "
+            "in your task context. Check the requested format, language, "
+            "requirements, important facts and evidence limitations. "
+            "Identify important omissions or contradictions. "
+            "Do not invent facts or treat unverified claims as confirmed.\n\n"
+            "Return a concise report using this format:\n"
             "STATUS: COMPLETE, PARTIAL, or NOT COMPLETE\n"
             "ISSUES: Important issues, or None identified\n"
             "CORRECTIONS: Necessary corrections, or None\n"
             "EVIDENCE LIMITS: Unverified claims, or None identified"
         ),
-        expected_output="A short quality-check report.",
+        expected_output="A quality-check report with status and issues.",
         agent=checker,
-        context=[work_task],
+        context=[work_task, research_task],
         async_execution=False,
     )
 
-    # Task 4: Final Reviewer.
-    # The Checker already has the Worker's output in its context.
-    # Passing only check_task here helps avoid duplicating the full
-    # Worker output in the Final Reviewer's explicit context.
+    # STEP 7: Final Reviewer receives all previous outputs.
     final_task = Task(
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            "Use the Checker report in your task context. "
-            "Produce the final deliverable requested by the user. "
-            "Apply necessary corrections only when supported. "
+            "Read all preceding task outputs in your context: "
+            "the Planner's plan, Worker's deliverable, Researcher's "
+            "research report and Checker's quality report.\n\n"
+            "Prepare the final deliverable requested by the user. "
+            "Apply necessary corrections when supported by evidence. "
+            "Do not ignore important Checker findings. "
             "Preserve the user's requested language and format. "
-            "Do not output internal agent notes or a review report. "
-            "Do not invent evidence. Disclose material uncertainty."
+            "Do not invent facts, sources or URLs. "
+            "Disclose important uncertainty. "
+            "Return the final user-facing answer only, not internal notes."
         ),
-        expected_output="The final user-facing deliverable.",
+        expected_output="The final reviewed user-facing deliverable.",
         agent=final_reviewer,
-        context=[check_task],
+        context=[
+            plan_task,
+            work_task,
+            research_task,
+            check_task,
+        ],
         async_execution=False,
     )
 
-    # Step 4: Run the four agents in order.
+    # STEP 8: Run the hybrid workflow.
+    # Worker and Researcher run concurrently.
     crew = Crew(
-        agents=[planner, worker, checker, final_reviewer],
-        tasks=[plan_task, work_task, check_task, final_task],
+        agents=[
+            planner,
+            worker,
+            researcher,
+            checker,
+            final_reviewer,
+        ],
+        tasks=[
+            plan_task,
+            work_task,
+            research_task,
+            check_task,
+            final_task,
+        ],
         process=Process.sequential,
         verbose=False,
     )
 
-    logger.info("Starting four-agent workflow")
+    logger.info("Starting five-agent hybrid workflow")
 
     try:
         crew.kickoff()
+
     except Exception as exc:
-        logger.exception("Four-agent workflow failed")
+        logger.exception("Five-agent workflow failed")
 
         error_text = str(exc).lower()
 
@@ -252,30 +307,26 @@ def run_user_task(user_task: str) -> dict:
             )
         ):
             raise RuntimeError(
-                "Groq token/rate limit error. The request may still be "
-                "too large for the available quota. Reduce agent prompts "
-                "and task context, or use a model/provider with sufficient "
-                "available limits. Check llm_config.py and agent files."
+                "Groq rate limit or token quota reached. "
+                "Try again after the limit resets or check your "
+                "Groq account limits."
             ) from exc
 
         raise RuntimeError(
             f"AI workflow failed: {type(exc).__name__}: {str(exc)[:300]}"
         ) from exc
 
-    elapsed = round(time.time() - started, 2)
-
-    # Step 5: Collect outputs.
+    # STEP 9: Collect all agent outputs.
     plan_output = _output(plan_task)
     worker_output = _output(work_task)
+    research_output = _output(research_task)
     review_output = _output(check_task)
     final_output = _output(final_task)
 
-    # A final reviewer can occasionally return empty output.
-    # In that case, preserve the Worker's deliverable rather than
-    # discarding a useful result.
+    # Preserve Worker output if Final Reviewer returns empty output.
     if not final_output.strip() and worker_output.strip():
         logger.warning(
-            "Final Reviewer returned empty output; using Worker output"
+            "Final Reviewer returned empty output. Using Worker output."
         )
         final_output = worker_output
 
@@ -285,14 +336,17 @@ def run_user_task(user_task: str) -> dict:
             "Check the Streamlit logs and model configuration."
         )
 
+    elapsed = round(time.time() - started, 2)
+
     agent_outputs = [
         ("1. Planner Agent", plan_output),
         ("2. Worker Agent", worker_output),
-        ("3. Checker Agent", review_output),
-        ("4. Final Reviewer", final_output),
+        ("3. Research Agent", research_output),
+        ("4. Checker Agent", review_output),
+        ("5. Final Reviewer", final_output),
     ]
 
-    logger.info("Workflow finished in %s seconds", elapsed)
+    logger.info("Workflow completed in %s seconds", elapsed)
 
     return {
         "final_result": final_output,

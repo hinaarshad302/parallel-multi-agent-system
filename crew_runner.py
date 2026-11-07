@@ -253,21 +253,19 @@ def run_user_task(user_task: str) -> dict:
     )
 
     # STEP 7: Final Reviewer receives all previous outputs.
-    final_task = Task(
+       final_task = Task(
         description=(
             f"ORIGINAL USER REQUEST:\n{user_task}\n\n"
-            "Read all preceding task outputs in your context: "
-            "the Planner's plan, Worker's deliverable, Researcher's "
-            "research report and Checker's quality report.\n\n"
-            "Prepare the final deliverable requested by the user. "
-            "Apply necessary corrections when supported by evidence. "
-            "Do not ignore important Checker findings. "
-            "Preserve the user's requested language and format. "
+            "Read all previous agent outputs carefully. "
+            "Prepare the final answer requested by the user. "
+            "Use the Checker's feedback to improve the answer. "
             "Do not invent facts, sources or URLs. "
-            "Disclose important uncertainty. "
-            "Return the final user-facing answer only, not internal notes."
+            "Only use references that are present in the Researcher's report. "
+            "If no web search was performed, do not add citations or references. "
+            "Clearly mention that external sources were not verified. "
+            "Keep the answer clear and follow the user's requested format."
         ),
-        expected_output="The final reviewed user-facing deliverable.",
+     expected_output="The final reviewed user-facing deliverable.",
         agent=final_reviewer,
         context=[
             plan_task,

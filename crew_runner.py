@@ -51,8 +51,8 @@ def _output(task):
         return ""
 
 
-def _needs_web_search(user_task):
-    """Check whether the task needs current web research."""
+ddef _needs_web_search(user_task):
+    """Check whether the task needs current or reliable web research."""
 
     keywords = (
         "latest",
@@ -62,7 +62,16 @@ def _needs_web_search(user_task):
         "research",
         "search the web",
         "find sources",
+        "reliable information",
+        "reliable sources",
+        "credible sources",
+        "trusted sources",
+        "authoritative sources",
+        "use reliable",
+        "evidence",
+        "citation",
         "citations",
+        "reference",
         "references",
         "verify",
         "fact-check",
@@ -75,7 +84,6 @@ def _needs_web_search(user_task):
     task_lower = user_task.lower()
 
     return any(word in task_lower for word in keywords)
-
 
 def _get_search_results(user_task):
     """Fetch relevant search evidence when needed."""

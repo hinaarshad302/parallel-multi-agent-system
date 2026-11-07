@@ -21,6 +21,12 @@ from agents.final_reviewer_agent import create_final_reviewer_agent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crew_runner")
+# Groq compatibility fix
+try:
+    import crewai.llms.cache as crew_cache
+    crew_cache.mark_cache_breakpoint = lambda msg: msg
+except Exception:
+    logging.exception("Could not apply Groq compatibility patch")
 
 MAX_USER_TASK_CHARS = 4000
 MAX_SEARCH_CHARS = 1500
